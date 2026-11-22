@@ -1575,7 +1575,9 @@ function renderClient() {   // the status pill in the settings bar
         sub = st.ready === "Accepted" ? "accepted · waiting for the others" : "accept it in the client"; break;
       case "ChampSelect": state = "select"; main = "Champ select"; sub = S.follow ? `following every pick${q}` : `follow is off${q}`; break;
       case "GameStart": case "InProgress": case "Reconnect":
-        state = "game"; main = "In game"; sub = st.game ? `live score · ${fmtClock(st.game.time)}` : "waiting for the game to load"; break;
+        state = "game"; main = "In game";
+        sub = st.paused ? "quiet while you play: nothing reads League until the game ends"
+          : st.game ? `live score · ${fmtClock(st.game.time)}` : "waiting for the game to load"; break;
       case "WaitingForStats": case "PreEndOfGame": case "EndOfGame":
         state = "idle"; main = "Game over"; sub = "queue again and the next draft starts by itself"; break;
       default:
@@ -1594,9 +1596,17 @@ function renderClient() {   // the status pill in the settings bar
 /* The League button (top right): whether the board can see your League client, and on the website
    (which can't see programs on your PC by itself) how to connect it with the League helper. */
 const LG = { open: false, timer: 0, shown: "" };
+const QUIET = { value: null };   // quiet during games (shared setting "quietInGame", on unless switched off)
+function quietInGame() {
+  if (QUIET.value !== null) return QUIET.value;
+  return (CL.st?.prefs || {}).quietInGame !== false;
+}
 const isWeb = () => document.documentElement.classList.contains("web");
 function leagueStatus() {   // [state, button label, what to say]
   const st = CL.st || {};
+  if (st.status === "on" && st.paused) {
+    return ["paused", "Quiet in game", `Your game is on, so nothing reads League or the game until it ends${st.account ? ` (<b>${esc(st.account)}</b>)` : ""}: the only thing checked is Windows' list of running programs (what Task Manager shows), to see when the game closes. Then it follows your client again by itself.`];
+  }
   if (st.status === "on") {
     const where = { Matchmaking: "in queue", ReadyCheck: "match found", ChampSelect: "in champ select", GameStart: "in game",
       InProgress: "in game", Reconnect: "in game" }[st.phase] || "in the client";
@@ -1648,9 +1658,20 @@ function renderLeagueModal() {
   $("#modalBody").innerHTML = `<div class="lg-panel"><h2><span class="lg-gem big" data-state="${state}" aria-hidden="true"></span>League client</h2>
     <p class="lg-now">${text}</p>${steps}
     <div class="lg-row"><label class="chk"><input type="checkbox" id="lgFollow"${S.follow ? " checked" : ""}> Follow the client: the board fills itself in</label>
-      ${isWeb() && state !== "on" ? '<button type="button" id="lgRetry">Check again</button>' : ""}</div></div>`;
+      ${isWeb() && state !== "on" && state !== "paused" ? '<button type="button" id="lgRetry">Check again</button>' : ""}</div>
+    <div class="lg-row lg-quiet"><label class="chk"><input type="checkbox" id="lgQuiet"${quietInGame() ? " checked" : ""}> Quiet during games <span class="muted">(recommended)</span></label>
+      <span class="muted">${quietInGame() ? "While your game runs, nothing reads League or the game; it picks up again by itself when the game ends. (The live score isn't filled in by itself: type it in if you want it.)"
+        : "Off: during games the live score is read from the game (Riot's official live-game data) and filled in by itself."}</span></div></div>`;
   $("#lgFollow").onchange = (e) => { $("#followOn").checked = e.target.checked; $("#followOn").dispatchEvent(new Event("change")); };
   $("#lgRetry")?.addEventListener("click", () => { window.acpClient?.retry(); toast("Looking for the League helper…"); });
+  $("#lgQuiet").onchange = (e) => {
+    const on = e.target.checked;
+    QUIET.value = on;
+    fetch("/api/prefs", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ quietInGame: on }) }).catch(() => {});
+    toast(on ? "Quiet during games: nothing reads League while you play" : "Following the live score during games");
+    LG.shown = "";
+    renderLeagueModal();
+  };
 }
 
 function tickQueue() {   // the queue timer, counting up like the client's
@@ -1670,9 +1691,14 @@ function waitingCard(card) {   // before champ select: what the client is doing,
   } else if (ph === "ReadyCheck") {
     body = `<div class="waiting found"><span class="sigil"><i></i></span><h2>Match found!</h2>
       <p>${st.ready === "Accepted" ? "Accepted. Waiting for the other players…" : "Accept it in the League client."}</p></div>`;
+  } else if (st.paused) {   // quiet during games: nothing is read while it runs
+    body = `<div class="waiting"><span class="sigil"><i></i></span><h2>Good luck: quiet while you play</h2>
+      <p>Nothing reads League or the game until it ends; then the board follows your client again by itself.
+      Want the win chance? Type the score into Live game below.</p></div>`;
   } else if (["GameStart", "InProgress", "Reconnect"].includes(ph)) {
     body = `<div class="waiting"><span class="sigil"><i></i></span><h2>Your game is loading</h2>
-      <p>Its 10 champions and the live score appear here as soon as the game is running.</p></div>`;
+      <p>${quietInGame() ? "The board goes quiet as soon as the game is running: nothing reads League or the game until it ends."
+        : "Its 10 champions and the live score appear here as soon as the game is running."}</p></div>`;
   } else {
     body = `<div class="waiting"><span class="sigil"><i></i></span><h2>Ready when you are</h2>
       <p>Queue up in League. From champ select on, this board fills itself in: bans, every pick, your turn, the timer.</p>
