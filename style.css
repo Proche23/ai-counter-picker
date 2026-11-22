@@ -1705,3 +1705,13 @@ body.draft-done:not(.show-grid):not(.swapping) .search { display: none; }
 body.draft-done .grid-tools { margin-top: 10px; }
 .center > .live-card { margin-top: 12px; }
 .analysis.complete > .mu-card { order: 2; }
+
+/* a phone: "which team are you on?" in a few compact rows, so the draft under it is in view too */
+body.phone .start-card { padding: 10px 10px 8px; }
+body.phone .start-card h2 { font-size: 14.5px; margin: 0 0 2px; }
+body.phone .start-card p { display: none; }
+body.phone .start-card .modes { margin: 0 0 8px; }
+body.phone .start-card .mode-btn { min-height: 38px; padding: 4px 6px; font-size: 10.5px; letter-spacing: .8px; }
+body.phone .start-card .mode-btn small, body.phone .start-card .team-btn small { display: none; }
+body.phone .start-card .row:has(.team-btn) { flex-wrap: nowrap; gap: 6px; margin: 6px 0 2px; }
+body.phone .start-card .team-btn { flex: 1 1 0; min-width: 0; min-height: 42px; padding: 0 6px; font-size: 13px; }
