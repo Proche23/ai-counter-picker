@@ -6,7 +6,7 @@
    browser. Following the League client, phone mode, the tracker window and Riot look-ups need the PC. */
 (() => {
   const realFetch = window.fetch.bind(window);
-  const V = "8e7c976299";   // (build_web.py: this build's stamp, so a browser never mixes files from two builds)
+  const V = "7aca27cac8";   // (build_web.py: this build's stamp, so a browser never mixes files from two builds)
   const BASE = new URL(".", document.currentScript?.src || location.href);   // where the site's files are
   const file = (p) => `${new URL(p, BASE).href}?v=${V}`;
   const STATIC = { "/api/meta": "data/meta.json", "/api/lab": "data/lab.json", "/api/lab_games": "data/lab_games.json" };
@@ -77,8 +77,59 @@
     el.append(state.stage, Object.assign(document.createElement("small"), { textContent: " first visit: about 15 MB, then it's cached" }));
   }
 
+  // ---- your League client, through the League helper on this PC (league-helper.zip, a small read-only
+  // program: a website can't see programs on your PC by itself). It's asked what the client shows, the
+  // engine turns that into the board's state (the same Python as the PC version), and the page's live
+  // request (/api/client) is answered like the PC version's: at once when something changed, else when it does.
+  const HELPER = "http://127.0.0.1:8799";
+  const CL = { v: 0, st: { status: "nohelper" }, last: "", waiters: [], started: false, first: null, timer: 0 };
+  function publish(st) {
+    const text = JSON.stringify(st);
+    if (text === CL.last) return;
+    CL.last = text;
+    CL.st = st;
+    CL.v += 1;
+    CL.waiters.splice(0).forEach((wake) => wake());
+  }
+  async function pollHelper() {
+    clearTimeout(CL.timer);
+    let next = 3000, st, raw = null;
+    try {
+      const r = await realFetch(`${HELPER}/state`, { cache: "no-store" });
+      if (!r.ok) throw new Error(`the helper answered ${r.status}`);
+      raw = await r.json();
+    } catch (e) {
+      st = { status: "nohelper" };   // (not running, or this browser won't let the page reach it)
+    }
+    if (raw && !raw.client) st = { status: "off", helper: raw.helper };
+    else if (raw) {
+      try {
+        const res = await engine("POST", "/api/client-parse", "", JSON.stringify(raw));
+        st = await res.json();
+        if (!res.ok) throw new Error(st.error || `error ${res.status}`);
+        st.helper = raw.helper;
+        const ph = st.phase;
+        next = ph === "ChampSelect" ? 400 : (ph === "Matchmaking" || ph === "ReadyCheck") ? 700
+          : ["GameStart", "InProgress", "Reconnect"].includes(ph) ? 2000 : 1500;
+        if (ph === "Matchmaking" && CL.st.phase === "Matchmaking" && CL.st.queue_since) st.queue_since = CL.st.queue_since;   // (a steady queue timer)
+      } catch (e) {
+        st = { status: "error", error: `couldn't read what the client shows (${e.message})` };
+      }
+    }
+    publish(st);
+    CL.timer = setTimeout(pollHelper, document.visibilityState === "hidden" && st.status !== "on" ? 6000 : next);
+  }
+  function startClient() {
+    if (!CL.started) { CL.started = true; CL.first = pollHelper(); }
+    return CL.first;
+  }
+  window.acpClient = {   // for the League button: look again now (after starting the helper)
+    retry: () => { CL.started = true; return pollHelper(); },
+    state: () => CL.st,
+    helperUrl: file("league-helper.zip"),
+  };
+
   // ---- every /api/... request the pages make
-  let clientCalls = 0;
   window.fetch = async (input, init = {}) => {
     const url = new URL(typeof input === "string" ? input : input.url, location.href);
     const at = url.pathname.indexOf("/api/");
@@ -86,9 +137,11 @@
     const path = url.pathname.slice(at);
     const method = (init.method || "GET").toUpperCase();
     if (STATIC[path]) return realFetch(file(STATIC[path]));
-    if (path === "/api/client") {   // no League client in a browser: answer once, then like an idle long poll
-      if (clientCalls++) await new Promise((r) => setTimeout(r, 25000));
-      return json({ status: "disabled", v: 1, prefs: prefs() });
+    if (path === "/api/client") {   // your League client (through the helper): answers when something changes
+      await startClient();
+      const v = Number(url.searchParams.get("v"));
+      if (v === CL.v) await new Promise((wake) => { CL.waiters.push(wake); setTimeout(wake, 20000); });
+      return json({ ...CL.st, v: CL.v, prefs: prefs() });
     }
     if (path === "/api/prefs") {
       if (method === "POST") {

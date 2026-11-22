@@ -280,6 +280,7 @@ function bindEvents() {
   $("#mySlot").onchange = (e) => { S.slot = e.target.value; refresh(); };
   $("#poolOn").onchange = (e) => { S.poolOn = e.target.checked; pushPrefs(); refresh(); };
   $("#phoneBtn").onclick = openPhone;
+  $("#leagueBtn").onclick = openLeague;
   $("#trackerBtn").onclick = openTracker;
   wireSegs();
   $("#followOn").onchange = (e) => {
@@ -1027,7 +1028,9 @@ async function openProfile(name, role = null) {
   } catch (e) { body.innerHTML = "<p>Couldn't load the profile.</p>"; }
 }
 function closeProfile() {
-  $("#modal").classList.remove("open", "phone-modal");
+  $("#modal").classList.remove("open", "phone-modal", "league-modal");
+  LG.open = false;
+  clearInterval(LG.timer);
   PH.open = false;
   clearInterval(PH.timer);
   if (!PHONE_VIEW) $("#champInput").focus({ preventScroll: true });   // (no jump: the draft at the top stays in view)
@@ -1562,6 +1565,7 @@ function renderClient() {   // the status pill in the settings bar
       : "can't reach this site's server · is website.bat still open?";
   }
   else if (st.status === "outdated") sub = "close website.bat and open it again to follow your games";
+  else if (st.status === "nohelper") sub = "not connected · click <b>League</b> at the top to connect it";
   else if (st.status === "error") sub = esc(st.error || "something went wrong");
   else if (st.status === "on") {
     switch (st.phase) {
@@ -1584,6 +1588,68 @@ function renderClient() {   // the status pill in the settings bar
   $("#clientTxt").title = $("#clientTxt").textContent;
   $("#followOn").checked = !!S.follow;
   tickQueue();
+  renderLeagueBtn();
+}
+
+/* The League button (top right): whether the board can see your League client, and on the website
+   (which can't see programs on your PC by itself) how to connect it with the League helper. */
+const LG = { open: false, timer: 0, shown: "" };
+const isWeb = () => document.documentElement.classList.contains("web");
+function leagueStatus() {   // [state, button label, what to say]
+  const st = CL.st || {};
+  if (st.status === "on") {
+    const where = { Matchmaking: "in queue", ReadyCheck: "match found", ChampSelect: "in champ select", GameStart: "in game",
+      InProgress: "in game", Reconnect: "in game" }[st.phase] || "in the client";
+    const label = { Matchmaking: "In queue", ReadyCheck: "Match found", ChampSelect: "Champ select", GameStart: "In game",
+      InProgress: "In game", Reconnect: "In game" }[st.phase] || "Connected";
+    return ["on", label, `Connected to your League client${st.account ? ` as <b>${esc(st.account)}</b>` : ""}, ${where}. ${S.follow
+      ? "The board follows it by itself: the queue, bans, picks, your team's hovers, the timer, then the live game."
+      : "Follow is off: switch it on below and the board fills itself in."}`];
+  }
+  if (st.status === "off") return ["off", "Open League", isWeb()
+    ? "The League helper is running. Open the League client and it connects by itself."
+    : "The League client isn't open. Open it and the board connects by itself."];
+  if (st.status === "nohelper") return ["none", "Connect League",
+    "Not connected. A website can't see programs on your PC by itself, so a small helper passes along what your League client shows."];
+  if (st.status === "disabled") return ["none", "League", "Following the League client is switched off on this copy of the site (it was started with --no-client)."];
+  if (st.status === "server") return ["lost", "League", "Can't reach this site's server: is website.bat still open?"];
+  if (st.status === "error") return ["lost", "League", esc(st.error || "Something went wrong.")];
+  return ["none", "League", "Looking for your League client…"];
+}
+function renderLeagueBtn() {
+  const b = $("#leagueBtn");
+  if (!b) return;
+  const [state, label, text] = leagueStatus();
+  b.dataset.state = state;
+  b.querySelector(".lg-txt").textContent = label;
+  b.title = text.replace(/<[^>]+>/g, "");
+  if (LG.open && LG.shown !== state + text + S.follow) renderLeagueModal();
+}
+function openLeague() {
+  LG.open = true;
+  $("#modal").classList.add("open", "league-modal");
+  renderLeagueModal();
+  if (window.acpClient && CL.st?.status !== "on") window.acpClient.retry();
+  clearInterval(LG.timer);
+  LG.timer = setInterval(() => {   // (looking again every few seconds while the window is open: the helper may just have started)
+    if (!LG.open) { clearInterval(LG.timer); return; }
+    if (window.acpClient && CL.st?.status === "nohelper") window.acpClient.retry();
+  }, 3000);
+}
+function renderLeagueModal() {
+  const [state, , text] = leagueStatus();
+  LG.shown = state + text + S.follow;
+  const steps = isWeb() && state === "none" ? `<ol class="lg-steps">
+      <li><a class="lg-dl" href="${esc(window.acpClient?.helperUrl || "league-helper.zip")}" download>Download the League helper</a> (Windows, about 6 KB) and extract it.</li>
+      <li>Double-click <b>Start League Helper.cmd</b>. If Windows says it protected your PC: <i>More info</i>, then <i>Run anyway</i>. Keep the small window it opens running while you play.</li>
+      <li>That's all: this button turns teal and the board follows your client by itself. Your browser may ask once whether this site may connect to apps on this device: choose <b>Allow</b>.</li></ol>
+    <p class="muted">The helper only reads, through the same local connection tools like Porofessor and Blitz use, and never clicks, picks or changes anything. It answers only on this PC, and only to this website.</p>` : "";
+  $("#modalBody").innerHTML = `<div class="lg-panel"><h2><span class="lg-gem big" data-state="${state}" aria-hidden="true"></span>League client</h2>
+    <p class="lg-now">${text}</p>${steps}
+    <div class="lg-row"><label class="chk"><input type="checkbox" id="lgFollow"${S.follow ? " checked" : ""}> Follow the client: the board fills itself in</label>
+      ${isWeb() && state !== "on" ? '<button type="button" id="lgRetry">Check again</button>' : ""}</div></div>`;
+  $("#lgFollow").onchange = (e) => { $("#followOn").checked = e.target.checked; $("#followOn").dispatchEvent(new Event("change")); };
+  $("#lgRetry")?.addEventListener("click", () => { window.acpClient?.retry(); toast("Looking for the League helper…"); });
 }
 
 function tickQueue() {   // the queue timer, counting up like the client's
