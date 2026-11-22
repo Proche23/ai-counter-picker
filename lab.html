@@ -1,0 +1,68 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<script src="web-shim.js?v=15454a5f5a"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Model Lab</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect x=%276%27 y=%276%27 width=%2720%27 height=%2720%27 transform=%27rotate(45 16 16)%27 fill=%27%23010a13%27 stroke=%27%23c8aa6e%27 stroke-width=%273%27/%3E%3Crect x=%2712%27 y=%2712%27 width=%278%27 height=%278%27 transform=%27rotate(45 16 16)%27 fill=%27%230ac8b9%27/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=15454a5f5a">
+<script src="theme.js?v=15454a5f5a"></script>
+<style>
+  .lab { max-width: 1200px; margin: 0 auto; padding: 18px 20px 30px; display: grid; gap: 18px; }
+  .lab .card h2 { margin-bottom: 4px; }
+  .lab .lead { color: var(--text-dim); margin: 0 0 14px; }
+  .tiles { display: grid; grid-template-columns: repeat(auto-fit, minmax(190px, 1fr)); gap: 12px; }
+  .tile { background: rgba(255,255,255,.025); border: 1px solid var(--edge); border-radius: var(--radius); padding: 14px; }
+  .tile .v { font-size: 30px; font-weight: 800; color: var(--white); }
+  .tile .k { color: var(--text-dim); font-size: 12.5px; }
+  .bars { display: grid; gap: 8px; }
+  .bar-row { display: grid; grid-template-columns: 210px 1fr 92px; align-items: center; gap: 10px; }
+  .bar-row .name { color: var(--white); font-size: 13px; }
+  .bar-row .name.dim { color: var(--text-dim); }
+  .bar-row .val { color: var(--white); font-weight: 700; font-size: 13px; text-align: right; }
+  .track { position: relative; height: 22px; background: rgba(255,255,255,.03); border-radius: var(--radius); }
+  .fill { position: absolute; left: 0; top: 4px; bottom: 4px; background: var(--gold); border-radius: 0 var(--radius) var(--radius) 0; }
+  .fill.dim { background: #6b5b3a; }
+  .whisker { position: absolute; top: 9px; height: 4px; border-left: 2px solid var(--white); border-right: 2px solid var(--white); }
+  .whisker::after { content: ""; position: absolute; left: 0; right: 0; top: 1px; border-top: 2px solid var(--white); }
+  .ref { position: absolute; top: 0; bottom: 0; border-left: 1px dashed #8c8a82; }
+  .said { position: absolute; top: 1px; bottom: 1px; width: 3px; margin-left: -1.5px; background: var(--white); border-radius: 2px; }
+  .axis-note { display: flex; justify-content: space-between; color: var(--text-dim); font-size: 11px; margin: 4px 0 0 220px; padding-right: 102px; }
+  table.t { width: 100%; border-collapse: collapse; font-size: 13px; }
+  table.t th, table.t td { padding: 7px 8px; border-bottom: 1px solid #1d2635; text-align: left; }
+  table.t th { color: var(--gold); font-weight: 600; font-size: 12px; text-transform: uppercase; letter-spacing: .8px; }
+  table.t td.num { text-align: right; font-variant-numeric: tabular-nums; }
+  .legend { display: flex; gap: 16px; flex-wrap: wrap; font-size: 12.5px; color: var(--text); margin: 6px 0 8px; }
+  .legend i { display: inline-block; width: 18px; height: 3px; border-radius: 2px; vertical-align: middle; margin-right: 6px; }
+  .chart-wrap { position: relative; }
+  .tip { position: absolute; pointer-events: none; background: #050c17; border: 1px solid var(--gold-dk); border-radius: var(--radius); padding: 7px 9px; font-size: 12px; color: var(--white); box-shadow: var(--shadow); opacity: 0; transition: opacity .1s; white-space: nowrap; z-index: 5; }
+  svg text { fill: #8c8a82; font: 11px Inter, sans-serif; }
+  .twocol { display: grid; grid-template-columns: 1fr 1fr; gap: 18px; }
+  .twocol > div { min-width: 0; } /* let wide tables scroll inside their box instead of widening the page */
+  .verdict { display: inline-block; font-weight: 700; font-size: 12px; padding: 2px 9px; border-radius: var(--radius); border: 1px solid; white-space: nowrap; }
+  .verdict.good { color: var(--good); border-color: #1f6b47; }
+  .verdict.warn { color: var(--gold); border-color: var(--gold-dk); }
+  .verdict.dim { color: var(--text-dim); border-color: #39414d; }
+  .verdict.bad { color: var(--bad); border-color: #7a2632; }
+  .chart-wrap.story { margin-top: 10px; }
+  @media (max-width: 860px) { .twocol { grid-template-columns: 1fr; } .bar-row { grid-template-columns: 130px 1fr 70px; } .axis-note { margin-left: 140px; padding-right: 80px; } }
+  @media (max-width: 520px) { .lab { padding: 12px 16px; } .bar-row { grid-template-columns: 1fr; gap: 4px; } .bar-row .val { text-align: left; } .axis-note { margin-left: 0; padding-right: 0; } }
+</style>
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="./" title="AI Counter Picker: the draft board"><span class="logo" aria-hidden="true"></span><span>AI&nbsp;COUNTER&nbsp;PICKER</span></a>
+  <nav class="pages" aria-label="Pages"><a href="./" title="The draft board: what to pick and ban, from pro games"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="5" height="5"/><rect x="9" y="2" width="5" height="5"/><rect x="2" y="9" width="5" height="5"/><rect x="9" y="9" width="5" height="5"/></svg><span>Draft</span></a><a href="soloq.html" title="Every champion in every role from high-elo solo queue: matchups and builds"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8 13.5 8 8 14.2 2.5 8Z"/><path d="M8 5.2 10.5 8 8 10.8 5.5 8Z"/></svg><span>Solo queue</span></a><a href="lab.html" aria-current="page" title="How the AI tests itself on every pro game"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 2h4M6.6 2v4.2L3 12.6c-.5.9.1 1.9 1.1 1.9h7.8c1 0 1.6-1 1.1-1.9L9.4 6.2V2"/><path d="M4.6 10h6.8"/></svg><span>Lab</span></a></nav>
+  <div class="data" id="labMeta">Loading…</div>
+  <div class="actions"><button data-theme-btn title="Theme: colours and art for the whole site">Theme</button></div>
+</header>
+<main class="lab" id="lab"></main>
+<footer><span>Every number on this page comes from predictions made before each game was played, using only earlier games.</span><span class="legal">AI Counter Picker isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games, and all associated properties are trademarks or registered trademarks of Riot Games, Inc. Pro match data from Leaguepedia (CC BY-SA 3.0).</span></footer>
+<script src="fx.js?v=15454a5f5a"></script>
+<script src="lab.js?v=15454a5f5a"></script>
+</body>
+</html>

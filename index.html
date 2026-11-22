@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<script src="web-shim.js?v=15454a5f5a"></script>
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<meta name="theme-color" content="#010a13">
+<title>AI Counter Picker</title>
+<link rel="icon" href="data:image/svg+xml,%3Csvg xmlns=%27http://www.w3.org/2000/svg%27 viewBox=%270 0 32 32%27%3E%3Crect x=%276%27 y=%276%27 width=%2720%27 height=%2720%27 transform=%27rotate(45 16 16)%27 fill=%27%23010a13%27 stroke=%27%23c8aa6e%27 stroke-width=%273%27/%3E%3Crect x=%2712%27 y=%2712%27 width=%278%27 height=%278%27 transform=%27rotate(45 16 16)%27 fill=%27%230ac8b9%27/%3E%3C/svg%3E">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css?v=15454a5f5a">
+<script src="theme.js?v=15454a5f5a"></script>
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="./" title="AI Counter Picker: the draft board"><span class="logo" aria-hidden="true"></span><span>AI&nbsp;COUNTER&nbsp;PICKER</span></a>
+  <nav class="pages" aria-label="Pages"><a href="./" aria-current="page" title="The draft board: what to pick and ban, from pro games"><svg viewBox="0 0 16 16" aria-hidden="true"><rect x="2" y="2" width="5" height="5"/><rect x="9" y="2" width="5" height="5"/><rect x="2" y="9" width="5" height="5"/><rect x="9" y="9" width="5" height="5"/></svg><span>Draft</span></a><a href="soloq.html" title="Every champion in every role from high-elo solo queue: matchups and builds"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8 13.5 8 8 14.2 2.5 8Z"/><path d="M8 5.2 10.5 8 8 10.8 5.5 8Z"/></svg><span>Solo queue</span></a><a href="lab.html" title="How the AI tests itself on every pro game"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M6 2h4M6.6 2v4.2L3 12.6c-.5.9.1 1.9 1.1 1.9h7.8c1 0 1.6-1 1.1-1.9L9.4 6.2V2"/><path d="M4.6 10h6.8"/></svg><span>Lab</span></a></nav>
+  <div class="actions">
+    <button id="trackerBtn" title="Draft tracker: a small window that sits on top of the League client in champ select and shows every player's hover, the timer and the best picks, live"><span class="tk-gem" aria-hidden="true"></span>Tracker</button>
+    <button id="phoneBtn" title="Watch this board on your phone (same Wi-Fi): scan a code once and it follows every pick there too"><span class="ph-gem" aria-hidden="true"></span>Phone</button>
+    <button data-theme-btn title="Theme">Theme</button>
+    <span class="sep" aria-hidden="true"></span>
+    <button id="undoBtn" title="Undo last step (Backspace in an empty box)">↶ Undo</button>
+    <button id="resetBtn" title="Clear the board for the next game: every pick and ban (your settings stay; Undo brings the draft back)">✕ Clear draft</button>
+    <button id="nextGameBtn" class="gold pro-only" title="Lock all 10 picks for Fearless and start the next game of the series">Next game ▸</button>
+  </div>
+</header>
+
+<!-- the keyboard, right under the header -->
+<div class="keys" id="keys">
+  <span><kbd>Enter</kbd> lock in</span>
+  <span>several at once: <i>zed yas lee</i></span>
+  <span><kbd>Enter</kbd> on empty = top recommendation</span>
+  <span><kbd>↑</kbd><kbd>↓</kbd> choose</span>
+  <span><kbd>Backspace</kbd> on empty = undo</span>
+  <span class="solo-only"><kbd>Shift</kbd>+<kbd>Enter</kbd> = banned</span>
+  <span class="data" id="dataBadge">Loading pro data…</span>
+</div>
+
+<!-- What you change most is a row of big one-click buttons (the lit one is the current choice). Each row
+     stands for a dropdown kept out of sight, which still holds the value for the rest of the page. -->
+<section class="settings">
+  <div class="client" id="client" data-state="off" hidden>
+    <span class="client-gem" aria-hidden="true"></span>
+    <span class="client-txt" id="clientTxt"><b>League client</b>looking for it…</span>
+    <label class="chk" title="On: the board fills itself in from your League client (queue, bans, picks, the timer, then the live score). Nothing is ever clicked in your client."><input type="checkbox" id="followOn" checked> Follow</label>
+  </div>
+  <label class="chk solo-switch" title="Your own ranked champ select: all bans first, your role, your champions"><input type="checkbox" id="soloMode"> Solo queue</label>
+  <div class="field" title="The team you're on">
+    <span class="field-name">You are</span>
+    <div class="seg big side-seg" data-for="us" role="group" aria-label="You are">
+      <button type="button" data-v="B">Blue</button><button type="button" data-v="R">Red</button><button type="button" data-v="" class="pro-only" title="Analyst: advice for both teams">Both</button>
+    </div>
+    <select id="us" hidden><option value="">Analyst (both)</option><option value="B">Blue</option><option value="R">Red</option></select>
+  </div>
+  <label class="pro-only">Blue team <select id="blueTeam"><option value="">Any team</option></select></label>
+  <label class="pro-only">Red team <select id="redTeam"><option value="">Any team</option></select></label>
+  <label class="pro-only" title="In 2026 pro play the first-pick team can be on either map side; blue side has won ~55%">First pick's side <select id="fpSide">
+    <option value="">Unknown</option><option value="blue">Blue side</option><option value="red">Red side</option>
+  </select></label>
+  <label class="chk pro-only"><input type="checkbox" id="skipBans"> Skip bans</label>
+  <div class="fearless pro-only"><span class="game" id="gameNo">Game 1</span> Fearless locked: <span id="fearlessList">none</span></div>
+</section>
+<section class="solobar" id="soloBar" hidden>
+  <div class="field" title="The role you play this game">
+    <span class="field-name">Your role</span>
+    <div class="seg big" data-for="myRole" role="group" aria-label="Your role">
+      <button type="button" data-v="TOP">Top</button><button type="button" data-v="JNG">Jungle</button><button type="button" data-v="MID">Mid</button><button type="button" data-v="BOT">Bot</button><button type="button" data-v="SUP">Support</button>
+    </div>
+    <select id="myRole" hidden><option value="TOP">Top</option><option value="JNG">Jungle</option><option value="MID">Mid</option><option value="BOT">Bot</option><option value="SUP">Support</option></select>
+  </div>
+  <div class="field" title="Your place in your team's pick order (shown in champ select). Picks typed in that slot count as yours.">
+    <span class="field-name">Your pick</span>
+    <div class="seg mid" data-for="mySlot" role="group" aria-label="Your pick">
+      <button type="button" data-v="1">1st</button><button type="button" data-v="2">2nd</button><button type="button" data-v="3">3rd</button><button type="button" data-v="4">4th</button><button type="button" data-v="5">5th</button><button type="button" data-v="" title="Not sure">?</button>
+    </div>
+    <select id="mySlot" hidden><option value="">Not sure</option><option value="1">1st</option><option value="2">2nd</option><option value="3">3rd</option><option value="4">4th</option><option value="5">5th</option></select>
+  </div>
+  <label class="chk" title="Suggest only champions you've played in this role"><input type="checkbox" id="poolOn"> Only my champions</label>
+  <div class="pool" id="poolChips"></div>
+</section>
+<div class="wake-tip" id="wakeTip" hidden></div>
+
+<main class="board">
+  <aside class="team blue" id="blueSide">
+    <div class="team-head"><span class="side-name">BLUE</span><span class="tag">first pick</span><span class="pct" id="bluePct"></span></div>
+    <div class="team-name" id="blueTeamName"></div>
+    <div class="bans" id="blueBans"></div>
+    <div class="picks" id="bluePicks"></div>
+  </aside>
+
+  <section class="center">
+    <div class="replay" id="replayBar" hidden></div>
+    <div class="start-card" id="startCard" hidden></div>
+    <div class="phase-wrap">
+      <div class="phase" id="phase"><span class="phase-step">Loading…</span></div>
+      <div class="clock" id="clock" hidden><i></i></div>
+    </div>
+    <div class="winbar" id="winbar" title="Win model: P(win) for each side from pro head-to-head and synergy records">
+      <div class="wb-blue" id="wbBlue" style="width:50%"></div><div class="wb-red" id="wbRed" style="width:50%"></div>
+      <span class="wb-label" id="wbLabel">50% · 50%</span>
+    </div>
+    <div class="wb-note" id="wbNote"></div>
+    <div class="search">
+      <input id="champInput" autocomplete="off" spellcheck="false" placeholder="Search a champion: a few letters, then Enter">
+      <ul class="suggest" id="suggest" role="listbox"></ul>
+    </div>
+    <div class="recs-title" id="recsTitle"></div>
+    <div class="recs" id="recs"></div>
+    <div class="pool-note" id="poolNote"></div>
+    <div class="grid-tools"><div class="role-tabs" id="roleTabs"></div><span class="grid-count" id="gridCount"></span></div>
+    <div class="grid" id="grid"></div>
+  </section>
+
+  <aside class="team red" id="redSide">
+    <div class="team-head"><span class="pct" id="redPct"></span><span class="tag">second pick</span><span class="side-name">RED</span></div>
+    <div class="team-name" id="redTeamName"></div>
+    <div class="bans" id="redBans"></div>
+    <div class="picks" id="redPicks"></div>
+  </aside>
+</main>
+
+<section class="mybuild" id="myBuild" hidden>
+  <article class="card">
+    <div class="mb-head"><h2>Your build</h2><span class="muted" id="mbHint">Click the champion you're playing</span></div>
+    <div class="mb-champs" id="mbChamps"></div>
+    <div class="mb-body" id="mbBody"></div>
+  </article>
+</section>
+
+<div class="toast" id="toast"></div>
+<div class="modal" id="modal" role="dialog" aria-modal="true" aria-labelledby="modalTitle">
+  <div class="modal-box"><button class="modal-x" id="modalClose" title="Close (Esc)">✕</button><div id="modalBody"></div></div>
+</div>
+
+<section class="analysis" id="analysis">
+  <article class="card" id="whyCard"></article>
+  <article class="card wide" id="planCard"></article>
+  <article class="card" id="buildCard"></article>
+  <article class="card mu-card" id="matchCard"></article>
+  <article class="card live-card" id="liveCard"></article>
+</section>
+
+<footer>
+  <span id="modelBadge"></span>
+  <span>Pro match data: <a href="https://lol.fandom.com" target="_blank" rel="noopener">Leaguepedia</a> (CC BY-SA 3.0) · Game data &amp; icons: Riot Data Dragon · Not endorsed by Riot Games.</span>
+<span class="legal">AI Counter Picker isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games, and all associated properties are trademarks or registered trademarks of Riot Games, Inc. Pro match data from Leaguepedia (CC BY-SA 3.0).</span></footer>
+<script src="fx.js?v=15454a5f5a"></script>
+<script src="matchups.js?v=15454a5f5a"></script>
+<script src="app.js?v=15454a5f5a"></script>
+</body>
+</html>

@@ -1,0 +1,403 @@
+"use strict";
+/* Solo queue page: every champion in every role from the solo queue database (data/soloq.db, via
+   /api/soloq/*), one champion's deep dive, and the download that fills the database (your Riot key). */
+const $ = (s, el = document) => el.querySelector(s);
+const esc = (s) => String(s ?? "").replace(/[&<>"']/g, (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#39;" }[c]));
+const pct = (x, d = 1) => (x == null ? "–" : `${(x * 100).toFixed(d)}%`);
+const num = (x) => (x == null ? "–" : Number(x).toLocaleString());
+const ROLES = ["TOP", "JNG", "MID", "BOT", "SUP"];
+const ROLE_NAME = { TOP: "Top", JNG: "Jungle", MID: "Mid", BOT: "Bot", SUP: "Support" };
+const TIER_RANK = { S: 5, A: 4, B: 3, C: 2, D: 1 };
+const THIN = 30;   // pro games in a role below which solo queue mode on the board also uses solo queue games
+// lane glyphs: the map as a square, the lane drawn in it (own drawings, not Riot's icons)
+const ROLE_ICON = {
+  TOP: '<path d="M3 13V3h10" /><rect x="3" y="3" width="4" height="4" class="f"/>',
+  JNG: '<path d="M8 2.5c2.6 2 3.6 4.4 3 7.4M8 2.5C5.4 4.5 4.4 6.9 5 9.9M8 13.5V7.5"/>',
+  MID: '<path d="M3 13 13 3" /><rect x="6" y="6" width="4" height="4" class="f" transform="rotate(45 8 8)"/>',
+  BOT: '<path d="M13 3v10H3" /><rect x="9" y="9" width="4" height="4" class="f"/>',
+  SUP: '<path d="M8 2.5 13 4.5v3.2c0 2.9-2.1 5-5 5.8-2.9-.8-5-2.9-5-5.8V4.5Z"/>',
+};
+const roleSvg = (r) => `<svg class="ri" viewBox="0 0 16 16" aria-hidden="true">${ROLE_ICON[r]}</svg>`;
+let META = null, ROLE = "MID", ROWS = [], SORT = { k: "tier", dir: -1 }, SEL = null, POLL = null, OPEN = null, seq = 0;
+
+const ddv = () => META?.version || "16.23.1";
+const champImg = (c) => (META?.champ_ids?.[c] ? `https://ddragon.leagueoflegends.com/cdn/${ddv()}/img/champion/${META.champ_ids[c]}.png` : "");
+const itemImg = (id) => `https://ddragon.leagueoflegends.com/cdn/${ddv()}/img/item/${id}.png`;
+const runeImg = (n) => (META?.runes?.[n] ? `https://ddragon.leagueoflegends.com/cdn/img/${META.runes[n]}` : "");
+const spellImg = (n) => (META?.spells?.[n] ? `https://ddragon.leagueoflegends.com/cdn/${ddv()}/img/spell/${META.spells[n]}` : "");
+const img = (src, alt = "", cls = "") => (src ? `<img class="${cls}" src="${src}" alt="${esc(alt)}" loading="lazy" decoding="async">` : `<span class="${cls} noimg"></span>`);
+
+async function getJSON(url, opts) {
+  const res = await fetch(url, opts);
+  let r;
+  try { r = await res.json(); } catch (e) { r = { error: `Server error ${res.status}` }; }
+  if (!res.ok && !r.error) r.error = `Server error ${res.status}`;
+  return r;
+}
+const post = (url, body) => getJSON(url, { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
+
+// ------------------------------------------------------------------ the database + the download
+const PHASE = {
+  starting: () => "Starting…",
+  ladder: (d) => `Reading the ${esc(d.tier_label || "")} ladder…`,
+  players: (d) => `Finding games: <b>${num(d.found)}</b> new so far, from ${num(d.players_used || 0)} players`,
+  games: (d) => `Downloading games: <b>${num(d.checked || 0)}</b> of ${num(Math.min(d.target, d.found || d.target))}`,
+  done: (d) => `Done: <b>${num(d.added)}</b> games added`,
+  stopped: (d) => `Stopped: <b>${num(d.added || 0)}</b> games added (the rest are remembered; download again to continue)`,
+  error: (d) => `<span class="err">${esc(d.error || "Something went wrong.")}</span>`,
+};
+const eta = (s) => (s == null ? "" : s < 90 ? "about a minute left" : s < 3600 ? `about ${Math.round(s / 60)} min left` : `about ${(s / 3600).toFixed(1)} h left`);
+const GAMES_OPTS = [[1000, "1,000", "~20 min"], [3000, "3,000", "~1 h"], [10000, "10,000", "~3.5 h"]];
+const DAYS_OPTS = [[7, "7 days"], [14, "14 days"], [21, "21 days"], [30, "30 days"]];
+let FORM = { games: 3000, tier: "master", days: 21, platform: null, open: false };
+
+function progressOf(d) {
+  if (d.phase === "games") return 0.06 + 0.94 * Math.min(1, (d.checked || 0) / Math.max(1, Math.min(d.target, d.found || d.target)));
+  if (d.phase === "players") return 0.01 + 0.05 * Math.min(1, (d.found || 0) / Math.max(1, d.target));
+  if (d.phase === "done") return 1;
+  return 0.01;
+}
+
+function keyBox(why) {
+  return `<div class="sq-key">${why ? `<p class="err">${why}</p>` : ""}
+    <p>Solo queue games come from Riot's API, so this needs <b>your own Riot key</b>: sign in at
+    <a href="https://developer.riotgames.com" target="_blank" rel="noopener">developer.riotgames.com</a>, copy the
+    <b>Development API Key</b> (it starts with <code>RGAPI-</code>) and paste it here. It's kept on this PC and only ever sent to Riot.
+    A development key works for 24 hours; a <b>Personal API Key</b> (free, apply on the same site) doesn't run out.</p>
+    <div class="sq-keyrow"><input id="sqKey" type="password" autocomplete="off" spellcheck="false" placeholder="RGAPI-…" aria-label="Riot API key">
+      <button id="sqKeySave" class="gold">Save key</button></div><p class="muted" id="sqKeyMsg"></p></div>`;
+}
+
+function formHTML() {
+  const seg = (name, opts, cur) => `<div class="seg mid" data-f="${name}" role="group">${opts.map(([v, a, b]) =>
+    `<button type="button" data-v="${v}" class="${String(v) === String(cur) ? "on" : ""}">${a}${b ? `<small>${b}</small>` : ""}</button>`).join("")}</div>`;
+  const plats = Object.entries(META.platforms || {}).map(([k, n]) => `<option value="${k}"${k === FORM.platform ? " selected" : ""}>${esc(n)}</option>`).join("");
+  return `<div class="sq-form">
+    <div class="field"><span class="field-name">Games</span>${seg("games", GAMES_OPTS, FORM.games)}</div>
+    <div class="field"><span class="field-name">Players</span>${seg("tier", Object.entries(META.tiers).map(([k, v]) => [k, v]), FORM.tier)}</div>
+    <div class="field"><span class="field-name">Played in the last</span>${seg("days", DAYS_OPTS, FORM.days)}</div>
+    <label class="field"><span class="field-name">Server</span><select id="sqPlat">${plats}</select></label>
+    <button id="sqGo" class="gold big-go">Download ${num(FORM.games)} games</button>
+  </div>
+  <p class="muted">Riot lets a key make 100 requests every 2 minutes, so about 3,000 games an hour. It runs in the background while this site is open,
+  and you can stop it any time: what's downloaded stays, and the next download continues where it stopped.</p>`;
+}
+
+function renderDb() {
+  const box = $("#dbCard"), s = META.summary, d = META.download || {}, riot = META.riot || {};
+  const has = s.games > 0, running = !!d.running;
+  const tiles = has ? `<div class="sq-tiles">
+      <div class="tile"><div class="k">Games</div><div class="v">${num(s.games)}</div><div class="s">${s.oldest ? `${esc(s.oldest)} to ${esc(s.newest)}` : ""}</div></div>
+      <div class="tile"><div class="k">Patches</div><div class="v">${s.patches.length ? esc(s.patches[0].patch) : "–"}</div><div class="s">${s.patches.slice(0, 3).map((p) => `${esc(p.patch)}: ${num(p.games)}`).join(" · ")}</div></div>
+      <div class="tile"><div class="k">Players</div><div class="v">${esc(tierMix(s.tiers))}</div><div class="s">${Object.keys(s.platforms || {}).map((p) => esc((META.platforms || {})[p] || p)).join(", ")}</div></div>
+      <div class="tile"><div class="k">Kept apart</div><div class="v sm">Pro data untouched</div><div class="s">The board uses these only for champions with under ${THIN} pro games in a role</div></div>
+    </div>` : "";
+  let body;
+  if (running) {
+    const p = progressOf(d);
+    body = `<div class="sq-run"><div class="sq-runhead"><span class="spin" aria-hidden="true"></span><span>${(PHASE[d.phase] || PHASE.starting)(d)}</span>
+        <span class="muted">${eta(d.eta_s)}</span><button id="sqStop">Stop</button></div>
+      <div class="sq-prog" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(p * 100)}"><i style="width:${(p * 100).toFixed(1)}%"></i></div>
+      <p class="muted">${esc(d.tier_label)} on ${esc((META.platforms || {})[d.platform] || d.platform)}, games from the last ${d.days} days · ${num(d.requests)} requests so far. You can keep using the site.</p></div>`;
+  } else {
+    const last = d.phase && d.phase !== "starting" ? `<p class="sq-last">${(PHASE[d.phase] || (() => ""))(d)}</p>` : "";
+    let ctrl;
+    if (META.web) ctrl = "";   // (the in-browser version: the data comes with the site)
+    else if (riot.blocked) ctrl = `<p class="muted">Downloading only works on the PC (it uses your Riot key).</p>`;
+    else if (!riot.configured) ctrl = keyBox("");
+    else if (riot.ok === false) ctrl = keyBox("Riot no longer accepts your saved key (development keys stop working 24 hours after they're made): paste a fresh one.");
+    else ctrl = has && !FORM.open ? `<button id="sqMore" class="gold">Download more games</button>` : formHTML();
+    body = `${last}${ctrl}`;
+  }
+  if (!has && META.web) {
+    box.innerHTML = `<div class="sq-hero"><div class="sq-hero-mark" aria-hidden="true">${roleSvg("MID")}</div><div>
+        <h2>Solo queue stats aren't in this copy yet</h2>
+        <p class="lead">This page shows every champion in every role from high-elo ranked solo queue: win, pick and ban rates, each lane matchup,
+        best teammates and common builds, kept apart from the pro games. The games are downloaded with the full version on a PC
+        (<code>py soloq.py --download</code>) and come along the next time this site is rebuilt. The draft board works without them.</p></div></div>`;
+    return;
+  }
+  box.innerHTML = has
+    ? `<div class="sq-dbhead"><h2>Solo queue database</h2></div>${tiles}${body}`
+    : `<div class="sq-hero"><div class="sq-hero-mark" aria-hidden="true">${roleSvg("MID")}</div><div>
+        <h2>Build your solo queue database</h2>
+        <p class="lead">A database of its own for ranked solo queue: the best players on your server, their recent games, every champion in every role,
+        each lane matchup, best teammates and common builds. It never mixes with the pro games. On the draft board, solo queue mode uses it only
+        for champions with too few pro games to judge (fewer than ${THIN} in that role), and marks them <span class="sqtag">SOLO Q</span>.</p></div></div>${body}`;
+  wireDb();
+}
+function tierMix(t) {
+  const k = Object.keys(t || {});
+  if (!k.length) return "–";
+  const order = ["CHALLENGER", "GRANDMASTER", "MASTER", "DIAMOND", "EMERALD"];
+  const low = order.filter((x) => k.includes(x)).pop() || k[0];
+  return `${low[0]}${low.slice(1).toLowerCase()}+`;
+}
+
+function wireDb() {
+  $("#sqStop")?.addEventListener("click", async () => { $("#sqStop").disabled = true; await post("/api/soloq/download", { stop: true }); poll(true); });
+  $("#sqMore")?.addEventListener("click", () => { FORM.open = true; renderDb(); });
+  document.querySelectorAll("#dbCard .seg[data-f]").forEach((g) => g.addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-v]");
+    if (!b) return;
+    const f = g.dataset.f, v = b.dataset.v;
+    FORM[f] = f === "tier" ? v : Number(v);
+    renderDb();
+  }));
+  $("#sqPlat")?.addEventListener("change", (e) => { FORM.platform = e.target.value; });
+  $("#sqGo")?.addEventListener("click", async () => {
+    const b = $("#sqGo");
+    b.disabled = true;
+    b.textContent = "Starting…";
+    const r = await post("/api/soloq/download", { games: FORM.games, tier: FORM.tier, days: FORM.days, platform: FORM.platform || META.platform });
+    if (r.error) {
+      if (r.riot) META.riot = r.riot;
+      renderDb();
+      $("#dbCard").insertAdjacentHTML("beforeend", `<p class="err">${esc(r.error)}</p>`);
+      return;
+    }
+    META.download = r.download;
+    FORM.open = false;
+    renderDb();
+    poll();
+  });
+  const key = $("#sqKey");
+  if (key) {
+    const save = async () => {
+      const v = key.value.trim(), m = $("#sqKeyMsg");
+      if (!v) { m.textContent = "Paste the key first."; return; }
+      m.textContent = "Asking Riot whether it accepts the key…";
+      $("#sqKeySave").disabled = true;
+      const r = await post("/api/players/riot-key", { key: v, platform: FORM.platform || META.platform || "na1" });
+      if (r.error) { m.innerHTML = `<span class="err">${esc(r.error)}</span>`; $("#sqKeySave").disabled = false; return; }
+      META.riot = r.riot_status;
+      FORM.open = true;
+      renderDb();
+    };
+    $("#sqKeySave").addEventListener("click", save);
+    key.addEventListener("keydown", (e) => { if (e.key === "Enter") save(); });
+    key.addEventListener("input", () => { if (/^RGAPI-[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/i.test(key.value.trim())) save(); });
+  }
+}
+
+async function poll(once) {
+  clearTimeout(POLL);
+  const before = META.summary.games;
+  const m = await getJSON(`/api/soloq/meta?patch=${encodeURIComponent($("#patch").value)}`);
+  if (!m.error) {
+    const was = META.download?.running;
+    META = m;
+    renderDb();
+    renderHead();
+    if (m.summary.games !== before || (was && !m.download.running)) { fillPatches(); renderTabs(); loadRole(); }
+  }
+  if (!once && META.download?.running) POLL = setTimeout(poll, 2000);
+  else if (META.download?.running) POLL = setTimeout(poll, 2000);
+}
+
+// ------------------------------------------------------------------ champions by role
+function renderHead() {
+  const s = META.summary;
+  $("#sqMeta").textContent = s.games ? `${num(s.games)} ranked solo queue games · ${tierMix(s.tiers)} · ${s.patches.length ? `patch ${s.patches[0].patch}` : ""}${s.newest ? ` · newest ${s.newest}` : ""}`
+    : "No solo queue games yet";
+  $("#browse").hidden = !s.games;
+}
+function fillPatches() {
+  const sel = $("#patch"), cur = sel.value;
+  sel.innerHTML = `<option value="">All patches</option>` + META.summary.patches.map((p) => `<option value="${esc(p.patch)}">Patch ${esc(p.patch)} (${num(p.games)})</option>`).join("");
+  sel.value = META.summary.patches.some((p) => p.patch === cur) ? cur : "";
+}
+function renderTabs() {
+  $("#roleTabs").innerHTML = ROLES.map((r) => `<button type="button" role="tab" data-v="${r}" aria-selected="${r === ROLE}" class="${r === ROLE ? "on" : ""}">
+    ${roleSvg(r)}<span>${ROLE_NAME[r]}</span><small>${META.roles?.[r] || 0}</small></button>`).join("");
+}
+
+async function loadRole() {
+  const my = ++seq;
+  $("#rows").innerHTML = Array.from({ length: 8 }, () => `<tr class="skel"><td colspan="9"><i></i></td></tr>`).join("");
+  const r = await getJSON(`/api/soloq/role?role=${ROLE}&patch=${encodeURIComponent($("#patch").value)}`);
+  if (my !== seq) return;
+  if (r.error) { $("#rows").innerHTML = `<tr><td colspan="9" class="err">${esc(r.error)}</td></tr>`; return; }
+  ROWS = r.rows || [];
+  renderRows();
+  const want = SEL && SEL.role === ROLE && ROWS.some((x) => x.champ === SEL.champ) ? SEL.champ : (ROWS[0] || {}).champ;
+  if (want && (!SEL || SEL.champ !== want || SEL.role !== ROLE || !OPEN)) openChamp(want, ROLE);
+  else if (!want) $("#detail").innerHTML = `<p class="muted">No games in this role${$("#patch").value ? " on this patch" : ""} yet.</p>`;
+}
+
+function sorted() {
+  const q = $("#find").value.trim().toLowerCase(), thin = $("#thinOnly").checked;
+  let rows = ROWS.filter((x) => (!q || x.champ.toLowerCase().includes(q)) && (!thin || (x.pro_games ?? 0) < THIN));
+  const k = SORT.k, dir = SORT.dir;
+  const val = (x) => (k === "tier" ? (TIER_RANK[x.tier] || 0) * 10 + x.score : k === "champ" ? x.champ : x[k] ?? -1);
+  rows = rows.slice().sort((a, b) => {
+    const A = val(a), B = val(b);
+    return (typeof A === "string" ? A.localeCompare(B) : A - B) * dir || b.games - a.games;
+  });
+  return rows;
+}
+
+function wrCell(x) {
+  const lo = 0.4, hi = 0.6, sc = (v) => Math.max(0, Math.min(100, ((v - lo) / (hi - lo)) * 100));
+  const tone = x.score >= 0.51 ? "up" : x.score <= 0.49 ? "down" : "";
+  return `<div class="wrc" title="${pct(x.wr)} in ${num(x.games)} games (95% range ${pct(x.lo, 0)}–${pct(x.hi, 0)}); ${pct(x.score)} after allowing for the number of games">
+    <div class="wrt"><i class="mid"></i><i class="ci" style="left:${sc(x.lo)}%;width:${Math.max(1, sc(x.hi) - sc(x.lo))}%"></i><i class="dot ${tone}" style="left:${sc(x.wr)}%"></i></div>
+    <b class="${tone}">${pct(x.wr)}</b></div>`;
+}
+
+function renderRows() {
+  const rows = sorted();
+  document.querySelectorAll("#table th[data-k]").forEach((th) => {
+    th.classList.toggle("sorted", th.dataset.k === SORT.k);
+    th.setAttribute("aria-sort", th.dataset.k === SORT.k ? (SORT.dir > 0 ? "ascending" : "descending") : "none");
+  });
+  $("#rows").innerHTML = rows.map((x, i) => {
+    const thin = (x.pro_games ?? 0) < THIN;
+    return `<tr data-c="${esc(x.champ)}" class="${SEL && SEL.champ === x.champ && SEL.role === ROLE ? "sel" : ""}" tabindex="0">
+      <td class="n">${i + 1}</td>
+      <td class="l"><span class="cn">${img(champImg(x.champ), x.champ, "ci")}<span>${esc(x.champ)}</span></span></td>
+      <td>${x.tier ? `<span class="tier t-${x.tier}">${x.tier}</span>` : `<span class="tier t-none" title="Too few games to rate">–</span>`}</td>
+      <td class="wr">${wrCell(x)}</td>
+      <td>${pct(x.pick)}</td><td>${pct(x.ban)}</td><td>${num(x.games)}</td><td>${x.kda.toFixed(1)}</td>
+      <td><span class="prog ${thin ? "thin" : ""}" title="${thin ? `Only ${x.pro_games ?? 0} pro games as ${ROLE_NAME[ROLE]}: solo queue mode on the board rates it with these solo queue games too` : `${num(x.pro_games)} pro games as ${ROLE_NAME[ROLE]} (${esc(x.pro_record || "")}): the board judges it on pro games`}">${num(x.pro_games ?? 0)}</span></td></tr>`;
+  }).join("") || `<tr><td colspan="9" class="muted empty">No champion matches.</td></tr>`;
+  const thinN = ROWS.filter((x) => (x.pro_games ?? 0) < THIN).length;
+  $("#listFoot").innerHTML = `${num(ROWS.length)} champions played as ${ROLE_NAME[ROLE]} · <span class="prog thin">${thinN}</span> with under ${THIN} pro games in this role (solo queue mode rates them with these games too).`;
+}
+
+// ------------------------------------------------------------------ one champion
+function bar(edge, max = 0.08) {
+  const w = (Math.min(Math.abs(edge), max) / max) * 50;
+  return `<span class="db"><i class="${edge >= 0 ? "pos" : "neg"}" style="${edge >= 0 ? `left:50%` : `left:${50 - w}%`};width:${w}%"></i></span>`;
+}
+function pairRow(x, role, base) {
+  const tone = x.score >= base + 0.01 ? "up" : x.score <= base - 0.01 ? "down" : "";
+  return `<button type="button" class="pr" data-c="${esc(x.champ)}" data-r="${x.role || role}" title="${esc(x.champ)}: ${x.wins}-${x.games - x.wins} (${pct(x.wr)}) in ${num(x.games)} games; ${pct(x.score)} after allowing for the number of games">
+    ${img(champImg(x.champ), x.champ, "pi")}<span class="pn">${esc(x.champ)}${x.role && x.role !== role ? ` <small>${ROLE_NAME[x.role]}</small>` : ""}</span>
+    <span class="pg">${num(x.games)}</span>${bar(x.score - base)}<b class="${tone}">${pct(x.wr)}</b></button>`;
+}
+function list(rows, role, base, empty) {
+  return rows.length ? `<div class="pl">${rows.map((x) => pairRow(x, role, base)).join("")}</div>` : `<p class="muted">${empty}</p>`;
+}
+
+function buildHTML(b) {
+  if (!b || (!b.items.length && !b.keystones.length)) return "";
+  const chip = (src, name, share, wr, cls = "") => `<div class="bi ${cls}" title="${esc(name)}: in ${pct(share, 0)} of games, ${pct(wr)} win rate">${img(src, name)}<span>${esc(name)}</span><small>${pct(share, 0)} · ${pct(wr, 0)} wins</small></div>`;
+  const ks = b.keystones.map((k) => chip(runeImg(k.rune), k.rune, k.share, k.wr)).join("");
+  const sp = b.spells.map((s) => `<div class="bi" title="${esc(s.spells.join(" + "))}: ${pct(s.share, 0)} of games, ${pct(s.wr)} win rate"><span class="duo">${s.spells.map((n) => img(spellImg(n), n)).join("")}</span><span>${esc(s.spells.join(" + "))}</span><small>${pct(s.share, 0)} · ${pct(s.wr, 0)} wins</small></div>`).join("");
+  const bt = b.boots.slice(0, 2).map((x) => chip(itemImg(x.id), x.item, x.share, x.wr)).join("");
+  const it = b.items.slice(0, 6).map((x) => chip(itemImg(x.id), x.item, x.share, x.wr)).join("");
+  return `<h3>Common build</h3><div class="sq-build">
+    ${ks ? `<div><h4>Keystone</h4><div class="bl">${ks}</div></div>` : ""}${sp ? `<div><h4>Spells</h4><div class="bl">${sp}</div></div>` : ""}
+    ${bt ? `<div><h4>Boots</h4><div class="bl">${bt}</div></div>` : ""}${it ? `<div class="wide"><h4>Finished items</h4><div class="bl">${it}</div></div>` : ""}</div>`;
+}
+
+async function openChamp(champ, role) {
+  SEL = { champ, role };
+  OPEN = null;
+  document.querySelectorAll("#rows tr").forEach((tr) => tr.classList.toggle("sel", tr.dataset.c === champ));
+  history.replaceState(null, "", `#${encodeURIComponent(champ)}/${role}`);
+  const box = $("#detail");
+  box.classList.add("loading");
+  const d = await getJSON(`/api/soloq/champ?name=${encodeURIComponent(champ)}&role=${role}&patch=${encodeURIComponent($("#patch").value)}`);
+  box.classList.remove("loading");
+  if (!SEL || SEL.champ !== champ) return;
+  OPEN = d;
+  if (d.error || !d.games) {
+    box.innerHTML = `<p class="muted">${esc(d.error || `No ${ROLE_NAME[role]} games for ${champ} here yet.`)}</p>`;
+    return;
+  }
+  const base = d.score;
+  const pro = d.pro || {};
+  const thin = (pro.games || 0) < THIN;
+  const proLine = thin
+    ? `Only <b>${num(pro.games || 0)}</b> pro game${pro.games === 1 ? "" : "s"} as ${ROLE_NAME[role]}${pro.record ? ` (${esc(pro.record)})` : ""}: in solo queue mode the draft board rates ${esc(champ)} with these solo queue games too.`
+    : `<b>${num(pro.games)}</b> pro games as ${ROLE_NAME[role]} (${esc(pro.record)}) · ${pct(pro.presence, 0)} pro presence: the draft board judges ${esc(champ)} on pro games alone.`;
+  const roles = (d.roles || []).map((r) => `<button type="button" class="rchip ${r.role === role ? "on" : ""}" data-r="${r.role}" title="${num(r.games)} games as ${ROLE_NAME[r.role]}">${roleSvg(r.role)}${ROLE_NAME[r.role]} <small>${pct(r.share, 0)}</small></button>`).join("");
+  const all = d.lanes.slice().sort((a, b) => b.games - a.games);
+  box.innerHTML = `
+    <div class="dh">${img(champImg(champ), champ, "big")}<div class="dt">
+      <h2>${esc(champ)}</h2>
+      <div class="dsub">${d.tier ? `<span class="tier t-${d.tier}">${d.tier}</span>` : ""}<span>${ROLE_NAME[role]}</span><span class="muted">·</span><span class="muted">${num(d.games)} games</span></div></div></div>
+    <div class="droles">${roles}</div>
+    <div class="kp">
+      <div><span>Win rate</span><b class="${base >= 0.51 ? "up" : base <= 0.49 ? "down" : ""}">${pct(d.wr)}</b><small>95% ${pct(d.lo, 0)}–${pct(d.hi, 0)}</small></div>
+      <div><span>Pick</span><b>${pct(d.pick)}</b><small>of games</small></div>
+      <div><span>Ban</span><b>${pct(d.ban)}</b><small>of games</small></div>
+      <div><span>KDA</span><b>${d.kda.toFixed(2)}</b><small>${d.k.toFixed(1)} / ${d.d.toFixed(1)} / ${d.a.toFixed(1)}</small></div>
+    </div>
+    <div class="dstats"><span>CS / min <b>${d.cspm.toFixed(1)}</b></span><span>Gold / min <b>${Math.round(d.gpm)}</b></span><span>Damage / min <b>${Math.round(d.dpm)}</b></span><span>Vision / min <b>${d.vspm.toFixed(2)}</b></span></div>
+    <p class="proline ${thin ? "thin" : ""}">${proLine}</p>
+    <h3>Lane matchups <small class="muted">vs the enemy ${ROLE_NAME[role]}, 8+ games</small></h3>
+    <div class="two"><div><h4>Strong against</h4>${list(d.best.filter((x) => x.score > base), role, base, "No clear good matchup yet.")}</div>
+      <div><h4>Struggles against</h4>${list(d.worst.filter((x) => x.score < base), role, base, "No clear bad matchup yet.")}</div></div>
+    ${all.length ? `<details class="mall"><summary>Every lane opponent (${all.length})</summary>${list(all, role, base, "")}</details>` : ""}
+    ${d.duo_threats?.length ? `<h3>Their bot lane <small class="muted">2 v 2: toughest first</small></h3>${list(d.duo_threats, role, base, "")}` : ""}
+    ${d.mates?.length ? `<h3>Best teammates</h3>${list(d.mates, role, base, "")}` : ""}
+    ${d.threats?.length ? `<h3>Toughest enemies <small class="muted">any role</small></h3>${list(d.threats, role, base, "")}` : ""}
+    ${buildHTML(d.build)}
+    <p class="muted dnote">The bars show each matchup against ${esc(champ)}'s own ${pct(base)} (after allowing for few games), so a long bar is a real difference, not noise.</p>`;
+  box.querySelectorAll(".pr[data-c]").forEach((b) => b.addEventListener("click", () => {
+    const r = b.dataset.r && ROLES.includes(b.dataset.r) ? b.dataset.r : role;
+    if (r !== ROLE) { ROLE = r; renderTabs(); SEL = { champ: b.dataset.c, role: r }; loadRole(); } else openChamp(b.dataset.c, r);
+    box.scrollTop = 0;
+  }));
+  box.querySelectorAll(".rchip[data-r]").forEach((b) => b.addEventListener("click", () => {
+    if (b.dataset.r === ROLE) return;
+    ROLE = b.dataset.r;
+    SEL = { champ, role: ROLE };
+    renderTabs();
+    loadRole();
+  }));
+}
+
+// ------------------------------------------------------------------ start
+async function init() {
+  META = await getJSON("/api/soloq/meta");
+  if (META.error) { $("#dbCard").innerHTML = `<p class="err">${esc(META.error)}</p>`; return; }
+  FORM.platform = META.platform;
+  const h = decodeURIComponent(location.hash.slice(1));
+  const [hc, hr] = h.split("/");
+  if (ROLES.includes(hr)) ROLE = hr;
+  if (hc && hr) SEL = { champ: hc, role: ROLE };
+  renderHead();
+  renderDb();
+  fillPatches();
+  renderTabs();
+  if (META.summary.games) loadRole();
+  if (META.download?.running) poll();
+  $("#roleTabs").addEventListener("click", (e) => {
+    const b = e.target.closest("button[data-v]");
+    if (!b || b.dataset.v === ROLE) return;
+    ROLE = b.dataset.v;
+    renderTabs();
+    loadRole();
+  });
+  $("#patch").addEventListener("change", () => { OPEN = null; loadRole(); });
+  $("#find").addEventListener("input", renderRows);
+  $("#find").addEventListener("keydown", (e) => { if (e.key === "Enter") { const first = $("#rows tr[data-c]"); if (first) openChamp(first.dataset.c, ROLE); } });
+  $("#thinOnly").addEventListener("change", renderRows);
+  document.querySelectorAll("#table th[data-k]").forEach((th) => th.addEventListener("click", () => {
+    const k = th.dataset.k;
+    SORT = SORT.k === k ? { k, dir: -SORT.dir } : { k, dir: k === "champ" ? 1 : -1 };
+    renderRows();
+  }));
+  $("#rows").addEventListener("click", (e) => { const tr = e.target.closest("tr[data-c]"); if (tr) openChamp(tr.dataset.c, ROLE); });
+  window.addEventListener("hashchange", () => {   // a link to another champion (#Name/ROLE) while the page is open
+    const [c, r] = decodeURIComponent(location.hash.slice(1)).split("/");
+    if (!c || !ROLES.includes(r) || (SEL && SEL.champ === c && SEL.role === r)) return;
+    SEL = { champ: c, role: r };
+    if (r !== ROLE) { ROLE = r; renderTabs(); loadRole(); } else openChamp(c, r);
+  });
+  $("#rows").addEventListener("keydown", (e) => {
+    const tr = e.target.closest("tr[data-c]");
+    if (!tr) return;
+    if (e.key === "Enter" || e.key === " ") { e.preventDefault(); openChamp(tr.dataset.c, ROLE); }
+    else if (e.key === "ArrowDown" || e.key === "ArrowUp") {
+      e.preventDefault();
+      const nx = e.key === "ArrowDown" ? tr.nextElementSibling : tr.previousElementSibling;
+      if (nx?.dataset.c) { nx.focus(); openChamp(nx.dataset.c, ROLE); }
+    }
+  });
+}
+init();
