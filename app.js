@@ -22,7 +22,7 @@ const PHONE_VIEW = !["127.0.0.1", "localhost", "::1", "[::1]"].includes(location
 const NARROW = matchMedia("(max-width: 640px)");
 const phoneLayout = () => document.body.classList.toggle("phone", PHONE_VIEW || NARROW.matches);
 phoneLayout();
-NARROW.addEventListener?.("change", phoneLayout);
+NARROW.addEventListener?.("change", () => { phoneLayout(); if (typeof RES !== "undefined" && RES) placeLive(); });
 
 let META = null, VER = "", CHAMPS = [], BY_NAME = {}, KEY = {}, ALIAS = {};
 let POOL = null;   // your saved account's champions per role (from the Players page look-ups)
@@ -160,7 +160,7 @@ async function init() {
   bindEvents();
   openSharedDraft();
   await refresh();
-  if (!PHONE_VIEW) $("#champInput").focus();   // (on a phone that would pop the keyboard up)
+  if (!PHONE_VIEW) $("#champInput").focus({ preventScroll: true });   // (no jump: the draft at the top stays in view; on a phone it would pop the keyboard up)
   clientLoop();   // follow the League client from here on
 }
 
@@ -743,7 +743,7 @@ function renderStart() {   // a new draft: which team are you on? (then you only
       S.us = b.dataset.us; S.sideChosen = true;
       S.banStage = S.solo && !S.loaded && S.typeBans;
       refresh();
-      $("#champInput").focus();
+      $("#champInput").focus({ preventScroll: true });   // (the draft stays in view: the box is right under it)
     };
   });
 }
@@ -810,6 +810,7 @@ function renderPhase() {
 }
 
 function renderTeams(instant = false) {   // instant: draw a just-typed champion before the server answers
+  document.body.classList.toggle("swapping", !!SWAP);
   const nxt = instant ? null : RES.next;
   const likely = RES.plan?.their_likely || {};
   const likelySide = RES.plan_side ? (RES.plan_side === "B" ? "R" : "B") : null;
@@ -1029,7 +1030,7 @@ function closeProfile() {
   $("#modal").classList.remove("open", "phone-modal");
   PH.open = false;
   clearInterval(PH.timer);
-  if (!PHONE_VIEW) $("#champInput").focus();
+  if (!PHONE_VIEW) $("#champInput").focus({ preventScroll: true });   // (no jump: the draft at the top stays in view)
 }
 
 /* ----------------------------------------------------------- analysis */
@@ -1974,8 +1975,33 @@ document.addEventListener("toggle", (e) => {   // remember whether the all-pairs
   if (e.target.matches?.("#matchCard .mu-all")) MU.open = e.target.open;
 }, true);
 
+/* A finished draft: the champion list folds away (Show champions brings it back) and the live game moves
+   into the middle of the board, between the two teams, so the game itself is in view without scrolling.
+   (On a phone the live game already leads the page in game, so it stays where it is there.) */
+function placeLive() {
+  const live = $("#liveCard"), center = document.querySelector(".center");
+  if (!live || !center) return;
+  const inBoard = !!RES?.complete && !document.body.classList.contains("phone");
+  if (inBoard && live.parentElement !== center) $("#wbNote").after(live);
+  else if (!inBoard && live.parentElement === center) $("#analysis").append(live);
+}
+function syncDone() {
+  const done = !!RES?.complete;
+  document.body.classList.toggle("draft-done", done);
+  if (!done) document.body.classList.remove("show-grid");
+  const b = $("#gridToggle");
+  if (b) b.textContent = document.body.classList.contains("show-grid") ? "Hide champions" : "Show champions";
+  placeLive();
+}
+document.addEventListener("click", (e) => {
+  if (!e.target.closest?.("#gridToggle")) return;
+  document.body.classList.toggle("show-grid");
+  syncDone();
+});
+
 function renderAnalysis() {
   $("#analysis").classList.toggle("complete", !!RES.complete);
+  syncDone();
   if (S.loaded && !RES.complete) {   // loading screen: nothing to advise until all 10 are in
     for (const id of ["#whyCard", "#liveCard", "#planCard", "#buildCard", "#matchCard"]) $(id).innerHTML = "";
     return;

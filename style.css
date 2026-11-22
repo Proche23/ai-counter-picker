@@ -1585,7 +1585,13 @@ nav.pages a[aria-current="page"]::after { opacity: 1; transform: scaleX(1); back
 nav.pages a[aria-current="page"] svg { color: var(--energy); opacity: 1; }
 nav.pages a:focus-visible { outline: 1px solid var(--energy); outline-offset: -4px; }
 header.top .actions .sep { width: 1px; align-self: stretch; margin: 10px 2px; background: linear-gradient(transparent, rgba(var(--accent-rgb), .4), transparent); }
-@media (max-width: 1180px) { nav.pages a span { display: none; } nav.pages a { padding: 0 10px; } }
+header.top .actions { gap: 6px; }
+header.top .actions button { padding: 0 12px; }
+nav.pages a { padding: 0 9px; letter-spacing: 1.2px; }
+@media (max-width: 1499px) { nav.pages a span { display: none; } nav.pages a { padding: 0 10px; } }
+/* when the tools don't fit beside the brand and the pages, they go to a second row (never off the screen) */
+header.top { flex-wrap: wrap; row-gap: 4px; }
+header.top .actions { margin-left: auto; flex-wrap: wrap; justify-content: flex-end; }
 @media (max-width: 760px) { nav.pages { order: 3; width: 100%; justify-content: space-around; margin: 0; } nav.pages a { padding: 10px 8px; } }
 
 /* ---------------------------------------------------------------- tooltips (fx.js) */
@@ -1636,3 +1642,66 @@ html.web label.chk:has(#poolOn), html.web #poolChips, html.web .pc-only { displa
 .engine-note.bad { border-left-color: var(--bad); }
 .engine-note.bad button { min-height: 28px; padding: 0 10px; font-size: 10.5px; margin-left: 6px; }
 .engine-note.gone { opacity: 0; transform: translateY(8px); pointer-events: none; }
+
+/* ---------------------------------------------------------------- the draft first
+   On narrower screens and phones the board is one column of blocks: which team you're on, then the
+   draft itself (both teams side by side), then the win bar, the search, the suggestions and, last,
+   the champion list. (The centre column's pieces join the board's own grid so they can sit around
+   the teams.) A finished draft folds the champion list away and puts the live game in the middle. */
+@media (max-width: 900px) {
+  .board { row-gap: 10px; }
+  .board > .center { display: contents; }
+  .center > .replay { order: 1; grid-column: 1 / -1; margin: 0; }
+  .center > .start-card { order: 2; grid-column: 1 / -1; margin: 0; }
+  .center > .phase-wrap { order: 3; grid-column: 1 / -1; }
+  .board > .team { order: 4; }
+  .center > .winbar { order: 5; grid-column: 1 / -1; margin: 2px 0 0; }
+  .center > .wb-note { order: 5; grid-column: 1 / -1; margin: -4px 0 0; }
+  .center > .live-card { order: 6; grid-column: 1 / -1; }
+  .center > .search { order: 7; grid-column: 1 / -1; }
+  .center > .recs-title { order: 8; grid-column: 1 / -1; margin: 4px 0 -4px; }
+  .center > .recs, .center > .pool-note { order: 8; grid-column: 1 / -1; }
+  .center > .pool-note:empty { display: none; }
+  .center > .grid-tools { order: 9; grid-column: 1 / -1; margin: 6px 0 0; }
+  .center > .grid { order: 9; grid-column: 1 / -1; }
+  .pick { height: 54px; padding: 3px 8px; line-height: 1.2; }
+  .pick .portrait { width: 40px; height: 40px; }
+  .pick .slot { font-size: 10px; }
+  .pick .cname { font-size: 14px; }
+  .pick .role { margin-top: 1px; font-size: 10.5px; line-height: 1.35; }
+  .bans { margin-bottom: 8px; }
+  .ban { width: 30px; height: 30px; }
+  .picks { gap: 6px; }
+}
+body.phone .board { row-gap: 8px; }
+body.phone .board > .center { display: contents; }
+body.phone .center > .replay { order: 1; grid-column: 1 / -1; margin: 0; }
+body.phone .center > .start-card { order: 2; grid-column: 1 / -1; margin: 0; }
+body.phone .center > .phase-wrap { order: 3; grid-column: 1 / -1; }
+body.phone .board > .team { order: 4; }
+body.phone .center > .winbar { order: 5; grid-column: 1 / -1; margin: 2px 0 0; }
+body.phone .center > .wb-note { order: 5; grid-column: 1 / -1; margin: -4px 0 0; }
+body.phone .center > .live-card { order: 6; grid-column: 1 / -1; }
+body.phone .center > .search { order: 7; grid-column: 1 / -1; }
+body.phone .center > .recs-title { order: 8; grid-column: 1 / -1; margin: 4px 0 -4px; }
+body.phone .center > .recs, body.phone .center > .pool-note { order: 8; grid-column: 1 / -1; }
+body.phone .center > .pool-note:empty { display: none; }
+body.phone .center > .grid-tools { order: 9; grid-column: 1 / -1; margin: 6px 0 0; }
+body.phone .center > .grid { order: 9; grid-column: 1 / -1; }
+
+/* the champion list: smaller portraits in a shorter box (it scrolls inside) */
+.grid { grid-template-columns: repeat(auto-fill, minmax(50px, 1fr)); gap: 6px; max-height: 300px; }
+.cell span { font-size: 9.5px; margin-top: 1px; }
+.cell .pres { font-size: 8.5px; padding: 0 2px; }
+body.phone .grid { grid-template-columns: repeat(auto-fill, minmax(42px, 1fr)); gap: 5px; max-height: 236px; }
+body.phone .cell span { font-size: 9px; }
+
+/* a finished draft: no more picks to make, so the champion list and the search fold away (Show
+   champions brings the list back; swapping a pick brings the search back) and the game is in view */
+.grid-toggle { display: none; min-height: var(--ctl-sm); padding: 0 12px; font-size: 11px; letter-spacing: 1px; margin-left: auto; }
+body.draft-done .grid-toggle { display: inline-flex; }
+body.draft-done:not(.show-grid) :is(.grid, .grid-tools .role-tabs, .grid-count) { display: none; }
+body.draft-done:not(.show-grid):not(.swapping) .search { display: none; }
+body.draft-done .grid-tools { margin-top: 10px; }
+.center > .live-card { margin-top: 12px; }
+.analysis.complete > .mu-card { order: 2; }
