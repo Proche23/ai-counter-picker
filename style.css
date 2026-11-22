@@ -1735,3 +1735,4 @@ body.phone .start-card .team-btn { flex: 1 1 0; min-width: 0; min-height: 42px; 
 .lg-dl { font-weight: 700; }
 .lg-row { display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 10px 16px; margin-top: 14px; padding-top: 12px; border-top: 1px solid var(--edge); }
 .lg-row label.chk { display: inline-flex; align-items: center; gap: 8px; color: var(--text); }
+.lg-alt { margin: 0 0 10px; padding: 9px 11px; border-left: 2px solid var(--energy); background: rgba(var(--energy-rgb), .06); font-size: 13px; line-height: 1.5; }
