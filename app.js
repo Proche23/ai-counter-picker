@@ -1670,10 +1670,10 @@ function renderLeagueModal() {
   LG.shown = state + text + S.follow + old;
   const update = old ? `<p class="lg-upd"><b>A newer League helper is out</b> (${esc(window.acpClient.helperNewest)}; yours is ${esc(CL.st.helper)}).
       It keeps following your games even if its window gets clicked or the game is slow to answer.
-      <a class="lg-dl" href="${esc(window.acpClient.helperUrl)}" download>Download it</a>, extract it over the old one,
+      <a class="lg-dl" href="${esc(window.acpClient.helperUrl)}" download>Download it</a>, extract it over the old one (right-click, <i>Extract All</i>),
       then close the old helper's window and double-click <b>Start League Helper.cmd</b> again.</p>` : "";
   const steps = isWeb() && state === "none" ? `<ol class="lg-steps">
-      <li><a class="lg-dl" href="${esc(window.acpClient?.helperUrl || "league-helper.zip")}" download>Download the League helper</a> (Windows, about 6 KB) and extract it.</li>
+      <li><a class="lg-dl" href="${esc(window.acpClient?.helperUrl || "league-helper.zip")}" download>Download the League helper</a> (Windows, about 6 KB) and extract it: right-click the zip, <i>Extract All</i>. (Started from inside the zip, its window closes at once.)</li>
       <li>Double-click <b>Start League Helper.cmd</b>. If Windows says it protected your PC: <i>More info</i>, then <i>Run anyway</i>. Keep the small window it opens running while you play.</li>
       <li>That's all: this button turns teal and the board follows your client by itself. Your browser may ask once whether this site may connect to apps on this device: choose <b>Allow</b>.</li></ol>
     ${/^(127\.0\.0\.1|localhost)$/.test(location.hostname) ? "" : `<p class="lg-alt">Started it and this still says <i>not connected</i>? Your browser may be stopping this page from reaching apps on your PC. Open the board through the helper instead: <a href="http://127.0.0.1:8799/" target="_blank" rel="noopener"><b>127.0.0.1:8799</b></a> (the same site, and it always connects).</p>`}

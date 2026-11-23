@@ -6,7 +6,7 @@
    browser. Following the League client, phone mode, the tracker window and Riot look-ups need the PC. */
 (() => {
   const realFetch = window.fetch.bind(window);
-  const V = "10e657bab8";   // (build_web.py: this build's stamp, so a browser never mixes files from two builds)
+  const V = "f52d22b3fd";   // (build_web.py: this build's stamp, so a browser never mixes files from two builds)
   const BASE = new URL(".", document.currentScript?.src || location.href);   // where the site's files are
   const file = (p) => `${new URL(p, BASE).href}?v=${V}`;
   const STATIC = { "/api/meta": "data/meta.json", "/api/lab": "data/lab.json", "/api/lab_games": "data/lab_games.json" };
@@ -95,7 +95,7 @@
   // engine turns that into the board's state (the same Python as the PC version), and the page's live
   // request (/api/client) is answered like the PC version's: at once when something changed, else when it does.
   const HELPER = "http://127.0.0.1:8799";
-  const HELPER_NEWEST = "1.4";   // (build_web.py: web/league-helper.ps1's version; an older helper still works, and the League window offers this one)
+  const HELPER_NEWEST = "1.5";   // (build_web.py: web/league-helper.ps1's version; an older helper still works, and the League window offers this one)
   // Nothing may stop the board following for good: every look at the helper and every read by the engine has
   // a time limit, a look that never ends is given up on, and a hidden page looks again as soon as it's shown.
   const ASK_MS = 8000, PARSE_MS = 20000, GRACE_MS = 12000;   // (a read by the engine takes well under a second)
