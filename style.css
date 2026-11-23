@@ -84,7 +84,16 @@ body::after {
     radial-gradient(125% 90% at 50% 15%, rgba(var(--bg0-rgb), .05), rgba(var(--bg0-rgb), .72) 75%),
     linear-gradient(180deg, rgba(var(--bg0-rgb), .12), rgba(var(--bg0-rgb), .36) 50%, rgba(var(--bg0-rgb), .74));
 }
-html.theme-swap body::before { opacity: 0; transition-duration: .2s; }
+/* the region's champions take turns (theme.js). Two pictures: the page's own (body::before) and a layer
+   just above it (.art-fade), both under the dark wash. The one coming in fades in evenly while the other
+   holds on and goes late, so together they stay as bright as one picture, with no dip halfway. */
+.art-fade { position: fixed; inset: 0; z-index: -1; pointer-events: none; opacity: 0; background: center 20% / cover no-repeat;
+  will-change: opacity; transition: opacity var(--art-fade, 1.5s) ease-in; }
+.art-fade.on { opacity: var(--art-opacity); transition-timing-function: linear; }
+html.art-out body::before { opacity: 0; transition: opacity var(--art-fade, 1.5s) ease-in; }
+html.art-back body::before { transition: opacity var(--art-fade, 1.5s) linear; }
+/* switching themes: the pictures go quickly (after the rules above, so this wins), then the new theme's comes in */
+html.theme-swap body::before, html.theme-swap .art-fade { opacity: 0; transition: opacity .2s var(--ease); }
 a { color: var(--gold); }
 button, select, input { font: inherit; }
 kbd { border: 1px solid var(--gold-dk); border-bottom-width: 2px; border-radius: var(--radius); padding: 0 4px; font-size: 11px; color: var(--gold); background: var(--kbd); }
@@ -918,6 +927,11 @@ button.linkish:hover { color: var(--gold-hi); text-shadow: none; }
   *, *::before, *::after { animation-duration: .01ms !important; animation-iteration-count: 1 !important; animation-delay: 0ms !important; transition-duration: .01ms !important; }
   /* the champion line was asked to move: keep it, it's slow and stops under the mouse */
   .pool.moving .pool-track { animation-duration: var(--dur, 10s) !important; animation-iteration-count: infinite !important; }
+  /* the champions behind the page were asked to take turns: keep their slow fade (a fade has no movement
+     in it; a cut from one picture to the next every few seconds would be harsher) */
+  html:not(.theme-swap) .art-fade, html.art-out:not(.theme-swap) body::before, html.art-back:not(.theme-swap) body::before {
+    transition-duration: var(--art-fade, 1.5s) !important;
+  }
 }
 
 /* ------------------------------------------------- phone mode: the PC side */
@@ -1967,4 +1981,87 @@ html[data-theme="ixtal"] button:where(:not(.mini, .linkish, .pr, .th-tile, .th-x
 html[data-theme="void"] { --btn-r: 14px 2px 14px 2px; --orn-inset: 2px; }
 html[data-theme="void"] button:where(:not(.mini, .linkish, .pr, .th-tile, .th-x, .modal-x, .mode-tab, .team-btn, .mode-btn, .rchip, .slot-btn, .rank-chip, #leagueBtn)):where(:not(.seg *, .role-tabs *))::after {
   border-radius: 12px 1px 12px 1px; background: radial-gradient(ellipse at 50% 130%, rgba(var(--energy-rgb), .5), transparent 70%);
+}
+
+/* ---------------------------------------------------------------- cut shapes keep their outline
+   A cut outline (clip-path) also cuts the frame off the cut edges. So on the cut-shape themes the button's
+   own background is the frame (the whole cut shape), and the face is a layer 2px inside it, cut the same
+   way: the gold line then runs along every edge, diagonals and steps included. Joined button rows (.seg)
+   get the cut at their two outer ends. The face and frame of each kind of button are named once here
+   (--face-bg, --frame-bg), so a lit (chosen) button stays lit. (:not(#acp-none) only raises the rules
+   above the buttons' own background rules, without matching anything less.) */
+button { --face-bg: linear-gradient(180deg, var(--face), var(--face2)); --frame-bg: linear-gradient(180deg, var(--accent) 0%, var(--accent-dk) 100%); }
+button:hover { --frame-bg: linear-gradient(180deg, var(--accent-hi) 0%, var(--accent) 55%, var(--accent-dk) 100%); }
+button.gold { --face-bg: linear-gradient(180deg, var(--energy-face) 0%, var(--energy-face2) 100%); }
+button.gold:hover { --face-bg: linear-gradient(180deg, var(--energy-face-hi) 0%, var(--energy-face-hi2) 100%); }
+button:disabled { --face-bg: linear-gradient(var(--face), var(--face)); --frame-bg: linear-gradient(#3c3c41, #3c3c41); }
+.role-tabs button.on, .seg button.on, .start-card .slot-btn.on, .start-card .mode-btn.on, button.mb-champ.on {
+  --face-bg: linear-gradient(180deg, var(--accent-hi) 0%, var(--accent) 45%, var(--accent-mid) 100%);
+  --frame-bg: linear-gradient(180deg, var(--accent-hi), var(--accent-dk));
+}
+button.rank-chip { --frame-bg: linear-gradient(180deg, color-mix(in srgb, var(--rk) 55%, transparent), rgba(var(--accent-dk-rgb), .5)); }
+button.rank-chip.on { --face-bg: linear-gradient(180deg, color-mix(in srgb, var(--rk) 22%, var(--face)), var(--face2));
+  --frame-bg: linear-gradient(180deg, var(--rk), color-mix(in srgb, var(--rk) 40%, var(--bg0))); }
+
+/* the cut shapes: the whole button, the inner face (2px in), and the two ends of a joined row */
+html[data-theme="piltover"] {
+  --btn-clip-in: polygon(6px 0, calc(100% - 6px) 0, 100% 6px, 100% calc(100% - 6px), calc(100% - 6px) 100%, 6px 100%, 0 calc(100% - 6px), 0 6px);
+  --btn-clip-l: polygon(7px 0, 100% 0, 100% 100%, 7px 100%, 0 calc(100% - 7px), 0 7px);
+  --btn-clip-l-in: polygon(6px 0, 100% 0, 100% 100%, 6px 100%, 0 calc(100% - 6px), 0 6px);
+  --btn-clip-r: polygon(0 0, calc(100% - 7px) 0, 100% 7px, 100% calc(100% - 7px), calc(100% - 7px) 100%, 0 100%);
+  --btn-clip-r-in: polygon(0 0, calc(100% - 6px) 0, 100% 6px, 100% calc(100% - 6px), calc(100% - 6px) 100%, 0 100%);
+}
+html[data-theme="zaun"] {
+  --btn-clip-in: polygon(8px 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+  --btn-clip-l: polygon(9px 0, 100% 0, 100% 100%, 0 100%);
+  --btn-clip-l-in: polygon(8px 0, 100% 0, 100% 100%, 0 100%);
+  --btn-clip-r: polygon(0 0, 100% 0, calc(100% - 9px) 100%, 0 100%);
+  --btn-clip-r-in: polygon(0 0, 100% 0, calc(100% - 8px) 100%, 0 100%);
+}
+html[data-theme="noxus"] {
+  --btn-clip-in: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+  --btn-clip-l: polygon(0 0, 100% 0, 100% 100%, 11px 100%, 0 calc(100% - 11px));
+  --btn-clip-l-in: polygon(0 0, 100% 0, 100% 100%, 10px 100%, 0 calc(100% - 10px));
+  --btn-clip-r: polygon(0 0, calc(100% - 11px) 0, 100% 11px, 100% 100%, 0 100%);
+  --btn-clip-r-in: polygon(0 0, calc(100% - 10px) 0, 100% 10px, 100% 100%, 0 100%);
+}
+html[data-theme="shurima"] {
+  --btn-clip-in: polygon(11px 0, calc(100% - 11px) 0, 100% 50%, calc(100% - 11px) 100%, 11px 100%, 0 50%);
+  --btn-clip-l: polygon(12px 0, 100% 0, 100% 100%, 12px 100%, 0 50%);
+  --btn-clip-l-in: polygon(11px 0, 100% 0, 100% 100%, 11px 100%, 0 50%);
+  --btn-clip-r: polygon(0 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 0 100%);
+  --btn-clip-r-in: polygon(0 0, calc(100% - 11px) 0, 100% 50%, calc(100% - 11px) 100%, 0 100%);
+}
+html[data-theme="ixtal"] {
+  --btn-clip-in: var(--btn-clip);   /* (straight steps: the same outline, 2px in, is 2px of frame everywhere) */
+  --btn-clip-l: polygon(6px 0, 100% 0, 100% 100%, 6px 100%, 6px calc(100% - 3px), 0 calc(100% - 3px), 0 3px, 6px 3px);
+  --btn-clip-l-in: var(--btn-clip-l);
+  --btn-clip-r: polygon(0 0, calc(100% - 6px) 0, calc(100% - 6px) 3px, 100% 3px, 100% calc(100% - 3px), calc(100% - 6px) calc(100% - 3px), calc(100% - 6px) 100%, 0 100%);
+  --btn-clip-r-in: var(--btn-clip-r);
+}
+/* whole buttons */
+html:is([data-theme="piltover"], [data-theme="zaun"], [data-theme="noxus"], [data-theme="shurima"], [data-theme="ixtal"]) button:where(:not(.mini, .linkish, .pr, .th-tile, .th-x, .modal-x, .mode-tab, .team-btn, .mode-btn)):where(:not(.seg *, .role-tabs *)):not(#acp-none) {
+  background: var(--frame-bg) border-box;
+}
+html:is([data-theme="piltover"], [data-theme="zaun"], [data-theme="noxus"], [data-theme="shurima"], [data-theme="ixtal"]) button:where(:not(.mini, .linkish, .pr, .th-tile, .th-x, .modal-x, .mode-tab, .team-btn, .mode-btn)):where(:not(.seg *, .role-tabs *)):not(#acp-none)::before {
+  display: block; inset: 2px; opacity: 1; clip-path: var(--btn-clip-in);
+  background: linear-gradient(105deg, transparent 38%, rgba(var(--tint), .1) 45%, rgba(var(--tint), .3) 50%, rgba(var(--tint), .1) 55%, transparent 62%) 150% 0 / 250% 100% no-repeat, var(--face-bg);
+  transition: background-position 0s .25s;
+}
+html:is([data-theme="piltover"], [data-theme="zaun"], [data-theme="noxus"], [data-theme="shurima"], [data-theme="ixtal"]) button:where(:not(.mini, .linkish, .pr, .th-tile, .th-x, .modal-x, .mode-tab, .team-btn, .mode-btn)):where(:not(.seg *, .role-tabs *)):not(#acp-none):hover::before {
+  background-position: -50% 0, 0 0; transition: background-position .8s var(--ease);
+}
+/* joined rows: no cut on the row itself; its first and last buttons are cut at their outer end */
+html:is([data-theme="piltover"], [data-theme="zaun"], [data-theme="noxus"], [data-theme="shurima"], [data-theme="ixtal"]) .seg { clip-path: none; }
+html:is([data-theme="piltover"], [data-theme="zaun"], [data-theme="noxus"], [data-theme="shurima"], [data-theme="ixtal"]) .seg > button:first-child:not(:last-child):not(#acp-none) {
+  clip-path: var(--btn-clip-l); background: var(--frame-bg) border-box;
+}
+html:is([data-theme="piltover"], [data-theme="zaun"], [data-theme="noxus"], [data-theme="shurima"], [data-theme="ixtal"]) .seg > button:last-child:not(:first-child):not(#acp-none) {
+  clip-path: var(--btn-clip-r); background: var(--frame-bg) border-box;
+}
+html:is([data-theme="piltover"], [data-theme="zaun"], [data-theme="noxus"], [data-theme="shurima"], [data-theme="ixtal"]) .seg > button:first-child:not(:last-child):not(#acp-none)::before {
+  display: block; inset: 2px; opacity: 1; clip-path: var(--btn-clip-l-in); background: var(--face-bg);
+}
+html:is([data-theme="piltover"], [data-theme="zaun"], [data-theme="noxus"], [data-theme="shurima"], [data-theme="ixtal"]) .seg > button:last-child:not(:first-child):not(#acp-none)::before {
+  display: block; inset: 2px; opacity: 1; clip-path: var(--btn-clip-r-in); background: var(--face-bg);
 }

@@ -49,6 +49,25 @@
       c: { accent: "#b870ff", accentHi: "#f2e4ff", accentDk: "#5a2b8f", energy: "#ff52da", energyHi: "#ffe2f8", energyDk: "#8a1a73",
            bg0: "#07030c", tone: "#26103d", text: "#d2c1e8", white: "#f8f0ff", glow1: "#3a1260", glow2: "#2a0a3a" } },
   ];
+  // each region's champions, shown one after another behind the page (Data Dragon ids; the first is the
+  // theme's own picture, the one its tile in the picker shows)
+  const ARTS = {
+    hextech: "Jayce Viktor Camille Heimerdinger Ezreal Orianna",
+    piltover: "Caitlyn Vi Ezreal Camille Seraphine Heimerdinger",
+    zaun: "Ekko Jinx Warwick Zeri Singed Twitch Renata",
+    noxus: "Swain Darius Katarina Draven Leblanc Samira Talon Ambessa",
+    demacia: "Galio Garen Lux JarvanIV Fiora XinZhao Shyvana Vayne",
+    freljord: "Ashe Sejuani Lissandra Braum Anivia Volibear Tryndamere Ornn",
+    ionia: "Irelia Ahri Yasuo Yone Karma Shen Zed Akali Xayah",
+    shurima: "Azir Nasus Renekton Xerath Sivir Taliyah KSante",
+    targon: "Leona Diana Pantheon Taric AurelionSol Zoe Aphelios",
+    shadowisles: "Viego Thresh Hecarim Kalista Karthus Yorick Gwen Vex",
+    bilgewater: "Gangplank MissFortune Graves TwistedFate Pyke Nautilus Illaoi",
+    bandle: "Lulu Teemo Tristana Veigar Rumble Ziggs Yuumi",
+    ixtal: "Qiyana Neeko Nidalee Zyra Rengar Milio Malphite",
+    void: "Belveth Kaisa Khazix Chogath Velkoz Malzahar Kassadin",
+  };
+  for (const t of THEMES) t.arts = [t.art, ...(ARTS[t.id] || "").split(" ").filter((a) => a && a !== t.art)];
   // each region's crest, drawn as line art (24 x 24)
   const CREST = {
     hextech: '<path d="M12 2.6l8.1 4.7v9.4L12 21.4l-8.1-4.7V7.3z"/><path d="M12 7.4l3.3 4.6-3.3 4.6-3.3-4.6z"/>',
@@ -124,6 +143,7 @@
     const meta = document.querySelector('meta[name="theme-color"]');
     if (meta) meta.content = t.c.bg0;
     current = t.id;
+    resetArt();
     document.querySelectorAll("[data-theme-btn]").forEach(paintButton);
     document.querySelectorAll(".th-tile").forEach((el) => el.classList.toggle("on", el.dataset.theme === t.id));
   }
@@ -163,6 +183,88 @@
     if (sending || Date.now() - pickedAt < 2000) return;   // (this page's own pick: see above)
     if (id && BY_ID[id] && id !== (pending || current)) apply(id, { fade: true });
   }
+  // ----------------------------------------------------- the region's champions, one after another
+  // Every ART_EVERY_MS the next champion of the region fades in, over ART_FADE_MS. Its picture is downloaded
+  // and decoded first (one that won't load is skipped), so a fade never shows half an image. Two pictures
+  // take turns: the page's own (body::before, the theme's --art) and a layer just above it (.art-fade). The
+  // one coming in fades in while the other fades out, and a picture only ever changes while it's out of
+  // sight. It rests while the page is hidden (another tab, a minimised window) and with data saver on.
+  // (A slow fade has no movement in it, so it stays on with "reduce motion" too: a fade is what that
+  // setting swaps movement for.)
+  const ART_EVERY_MS = 5000, ART_FADE_MS = 1500;   // (a new champion every 5 s, 1.5 s of it the fade)
+  root.style.setProperty("--art-fade", `${ART_FADE_MS}ms`);   // (the stylesheet's fades take this long too)
+  let artTimer = 0, artIdx = 0, artLayer = null, artOnLayer = false, artFadeEnd = 0;
+  let artRun = 0;   // (a new theme, or a newer turn, retires a turn that's still getting its picture ready)
+  function artLayerEl() {
+    if (!document.body) return null;
+    if (!artLayer) {
+      artLayer = document.createElement("div");
+      artLayer.className = "art-fade";
+      artLayer.setAttribute("aria-hidden", "true");
+    }
+    if (!artLayer.isConnected) {
+      document.body.prepend(artLayer);   // (first in <body>: over the page's picture, under the dark wash)
+      void getComputedStyle(artLayer).opacity;   // (so its first fade starts from nothing)
+    }
+    return artLayer;
+  }
+  const artPos = (t, id) => (id === t.art ? t.pos : "center 20%");
+  function scheduleArt(ms = ART_EVERY_MS - ART_FADE_MS) {
+    clearTimeout(artTimer);
+    const t = BY_ID[current];
+    if (navigator.connection?.saveData || document.hidden || !t || t.arts.length < 2) return;
+    artTimer = setTimeout(nextArt, ms);
+  }
+  function resetArt() {   // a theme was (re)applied: its own first picture (the page's), then its champions again
+    artRun++;
+    artIdx = 0;
+    artOnLayer = false;
+    artFadeEnd = 0;
+    root.classList.remove("art-out", "art-back");
+    artLayer?.classList.remove("on");
+    scheduleArt();
+  }
+  async function nextArt() {
+    const t = BY_ID[current], run = ++artRun;
+    if (pending || !t) return scheduleArt();   // (a theme on its way in starts its own)
+    if (Date.now() < artFadeEnd) return scheduleArt(artFadeEnd - Date.now());   // (one fade at a time)
+    let idx = artIdx;
+    for (let tries = 1; tries < t.arts.length; tries++) {
+      idx = (idx + 1) % t.arts.length;
+      const id = t.arts[idx], src = SPLASH(id);
+      const img = new Image();
+      img.src = src;
+      try {
+        await (img.decode ? img.decode() : new Promise((res, rej) => { img.onload = res; img.onerror = rej; }));
+      } catch (e) {
+        if (run !== artRun) return;
+        continue;   // (that picture won't load: the next one)
+      }
+      if (run !== artRun) return;   // (a new theme took over meanwhile: it has its own timer)
+      const layer = artLayerEl();
+      if (pending || document.hidden || !layer) return scheduleArt();
+      artIdx = idx;
+      if (artOnLayer) {   // back to the page's own picture: it changes while it's out of sight, then fades in
+        root.style.setProperty("--art", `url("${src}")`);
+        root.style.setProperty("--art-pos", artPos(t, id));
+        root.classList.add("art-back");
+        root.classList.remove("art-out");
+        layer.classList.remove("on");
+      } else {   // the layer: the same
+        layer.style.backgroundImage = `url("${src}")`;
+        layer.style.backgroundPosition = artPos(t, id);
+        root.classList.add("art-out");
+        root.classList.remove("art-back");
+        layer.classList.add("on");
+      }
+      artOnLayer = !artOnLayer;
+      artFadeEnd = Date.now() + ART_FADE_MS + 100;
+      return scheduleArt(ART_EVERY_MS);
+    }
+    scheduleArt();   // none of the others would load just now: try again later
+  }
+  document.addEventListener("visibilitychange", () => (document.hidden ? clearTimeout(artTimer) : scheduleArt()));
+
   let saved = null;
   try { saved = localStorage.getItem(KEY); } catch (e) { /* */ }
   apply(saved || "hextech", { save: false });
@@ -184,7 +286,7 @@
       box.setAttribute("aria-label", "Choose a theme");
       box.innerHTML = `<div class="th-box"><button class="modal-x th-x" title="Close (Esc)">✕</button>
         <h2 class="th-title">Choose your region</h2>
-        <p class="th-lead">Colours and art for the whole site: here, in the draft tracker and on your phone. The Blue and Red team colours stay the same.</p>
+        <p class="th-lead">Colours, buttons and champion art for the whole site, here, in the draft tracker and on your phone: the region's champions take turns behind the page. The Blue and Red team colours stay the same.</p>
         <div class="th-grid">${THEMES.map((t) => `<button class="th-tile" data-theme="${t.id}" style="--t-a:${t.c.accent};--t-e:${t.c.energy};--t-bg:${t.c.bg0}">
           <span class="th-art" style="background-image:url('${SPLASH(t.art)}');background-position:${t.pos}"></span>
           <span class="th-crest">${crest(t.id)}</span>
@@ -211,5 +313,5 @@
   if (document.readyState === "loading") document.addEventListener("DOMContentLoaded", wire);
   else wire();
 
-  window.ACPTheme = { THEMES, apply, fromServer, openPicker, current: () => current, crest };
+  window.ACPTheme = { THEMES, apply, fromServer, openPicker, current: () => current, crest, nextArt };
 })();
