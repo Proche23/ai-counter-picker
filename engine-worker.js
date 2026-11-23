@@ -28,11 +28,34 @@ const started = (async () => {
   postMessage({ ready: true });
 })().catch((e) => postMessage({ fatal: String((e && e.message) || e).split("\n").slice(-3).join(" ") }));
 
+// solo queue: each rank's statistics are a file of their own (engine/solo-<rank>.bin), fetched the first time
+// the page asks for that rank (the engine answers 409 {need_solo}), then the question is asked again
+const soloLoading = {};
+async function loadSolo(key) {
+  if (!soloLoading[key]) {
+    soloLoading[key] = (async () => {
+      const data = await bytes(`engine/solo-${encodeURIComponent(key)}.bin?v=${V}`);
+      const path = `/app/solo-${key}.bin`;
+      py.FS.writeFile(path, data);
+      py.globals.get("webapi").load_solo(key, path);
+    })();
+    soloLoading[key].catch(() => { delete soloLoading[key]; });   // (a failed download is tried again next time)
+  }
+  return soloLoading[key];
+}
+
 self.onmessage = async (e) => {
   const { id, method, path, query, body } = e.data || {};
   try {
     await started;
-    postMessage({ id, out: handle(method, path, query || "", body || "") });
+    let out = handle(method, path, query || "", body || "");
+    for (let i = 0; i < 2; i++) {
+      const r = JSON.parse(out);
+      if (r.status !== 409 || !r.body?.need_solo) break;
+      await loadSolo(r.body.need_solo);
+      out = handle(method, path, query || "", body || "");
+    }
+    postMessage({ id, out });
   } catch (err) {
     postMessage({ id, out: JSON.stringify({ status: 500, body: { error: String((err && err.message) || err) } }) });
   }

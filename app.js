@@ -14,7 +14,19 @@ const LEAGUE_SHORT = {
 const DRIVER_LABEL = {
   vs_their_picks: "vs their picks", vs_their_likely_picks: "vs what they'll likely pick",
   with_your_picks: "with your picks", champion: "champion strength", player_comfort: "player comfort",
+  vs_lane: "lane matchup",
 };
+// solo queue mode: the board answers from one rank's solo queue games (this season) instead of pro games
+const RANKS = ["iron", "bronze", "silver", "gold", "platinum", "emerald", "diamond", "master"];
+const RANK_LABEL = { iron: "Iron", bronze: "Bronze", silver: "Silver", gold: "Gold", platinum: "Platinum",
+  emerald: "Emerald", diamond: "Diamond", master: "Master+" };
+const RANK_COLOR = { iron: "#8a7b74", bronze: "#b77b55", silver: "#a8bac4", gold: "#e0b252", platinum: "#4fc2ad",
+  emerald: "#34c77b", diamond: "#7d99f5", master: "#bd74ee" };
+const SOLO = { data: null, error: null, timer: 0 };   // /api/soloq/ranks: every rank's games, the lab's findings
+const soloMode = () => S.mode === "solo";
+const rankName = () => RANK_LABEL[S.rank] || "Solo queue";
+const GAMES = () => (soloMode() ? `${rankName()} games` : "pro games");   // what the numbers on the board come from
+const short = (n) => (n >= 10000 ? `${Math.round(n / 1000)}k` : n >= 1000 ? `${(n / 1000).toFixed(1)}k` : String(n));
 
 // opened on your phone (phone mode: the site reached over your home Wi-Fi, not on this PC itself)
 const PHONE_VIEW = !["127.0.0.1", "localhost", "::1", "[::1]"].includes(location.hostname);
@@ -61,6 +73,9 @@ function freshState(keep) {
     loaded: keep?.loaded || false,   // loading screen / game started: skip bans, just type the 10 champions
     follow: keep?.follow ?? true,    // fill the board in from your League client by itself
     clientKey: "",                   // which champ select (or game) this board was filled from
+    mode: keep?.mode === "solo" ? "solo" : "pro",   // the tab at the top: pro play, or solo queue at your rank
+    rank: RANKS.includes(keep?.rank) ? keep.rank : "silver",
+    proSolo: keep?.proSolo ?? false,   // (the "Solo queue" switch as it was on the pro tab)
   };
 }
 function saveState() { try { localStorage.setItem("acp-draft-v1", JSON.stringify(S)); } catch (e) { /* private mode */ } }
@@ -123,9 +138,7 @@ async function init() {
   CHAMPS.forEach((c) => { BY_NAME[c.name] = c; KEY[key(c.name)] = c.name; if (!KEY[key(c.id)]) KEY[key(c.id)] = c.name; });
   Object.entries(ALIAS).forEach(([a, n]) => { if (BY_NAME[n] && !KEY[key(a)]) KEY[key(a)] = n; });
 
-  const sm = META.summary;
-  const leagues = Object.keys(sm.leagues).map((l) => LEAGUE_SHORT[l] || l).join(" · ");
-  $("#dataBadge").textContent = `${sm.games.toLocaleString()} pro games · ${leagues}${sm.region_games ? ` · +${sm.region_games.toLocaleString()} from other regions` : ""} · newest: ${sm.latest_event}, patch ${sm.latest_patch}`;
+  renderBadge();
   const m = META.model || {};
   const acc = m.oos_accuracy || {};
   const tk = m.predictor_topk || {};
@@ -159,9 +172,126 @@ async function init() {
 
   bindEvents();
   openSharedDraft();
+  renderMode();
+  if (soloMode()) await loadSolo();
   await refresh();
   if (!PHONE_VIEW) $("#champInput").focus({ preventScroll: true });   // (no jump: the draft at the top stays in view; on a phone it would pop the keyboard up)
   clientLoop();   // follow the League client from here on
+}
+
+/* ------------------------------------------------- pro play / solo queue */
+function renderBadge() {   // the data line under the header: what the board's numbers come from
+  const sm = (soloMode() && RES?.summary?.solo ? RES.summary : null);
+  if (sm) {
+    const sq = sm.solo;
+    $("#dataBadge").textContent = `${sm.games.toLocaleString()} ${sq.label} solo queue games this season${sq.timelines ? ` (${sq.timelines.toLocaleString()} minute by minute)` : ""} · newest patch ${sm.latest_patch} · nearby ranks add evidence`;
+    return;
+  }
+  if (soloMode()) { $("#dataBadge").textContent = `Solo queue · ${rankName()}`; return; }
+  const p = META.summary;
+  const leagues = Object.keys(p.leagues).map((l) => LEAGUE_SHORT[l] || l).join(" · ");
+  $("#dataBadge").textContent = `${p.games.toLocaleString()} pro games · ${leagues}${p.region_games ? ` · +${p.region_games.toLocaleString()} from other regions` : ""} · newest: ${p.latest_event}, patch ${p.latest_patch}`;
+}
+
+function renderMode() {   // the tab strip at the top, and the rank picker under solo queue
+  const solo = soloMode();
+  document.body.classList.toggle("mode-solo", solo);
+  document.querySelectorAll(".mode-tab").forEach((b) => {
+    const on = b.dataset.mode === S.mode;
+    b.classList.toggle("on", on);
+    b.setAttribute("aria-selected", on ? "true" : "false");
+  });
+  const rp = $("#rankPick");
+  rp.hidden = !solo;
+  const ranks = SOLO.data?.ranks || {};
+  if (solo) {
+    rp.innerHTML = RANKS.map((r) => {
+      const d = ranks[r] || {}, n = d.games || 0, on = r === S.rank;
+      const tip = n ? `${RANK_LABEL[r]}: ${n.toLocaleString()} solo queue games this season${d.timelines ? `, ${d.timelines.toLocaleString()} minute by minute` : ""}${d.patch ? ` · newest patch ${d.patch}` : ""}${d.fitted ? ` · tested ${d.fitted}` : " · not tested by the lab yet"}`
+        : `${RANK_LABEL[r]}: no games downloaded yet`;
+      return `<button type="button" class="rank-chip${on ? " on" : ""}${n ? "" : " empty"}" data-rank="${r}" style="--rk:${RANK_COLOR[r]}" aria-pressed="${on}" title="${esc(tip)}"><i class="rk-gem" aria-hidden="true"></i><span>${RANK_LABEL[r]}</span>${SOLO.data ? `<small>${n ? short(n) : "–"}</small>` : ""}</button>`;
+    }).join("");
+  }
+  const dl = SOLO.data?.download;
+  const spin = '<span class="spin-inline" aria-hidden="true"></span>';
+  $("#modeNote").innerHTML = !solo || !dl?.running ? ""
+    : dl.phase === "learning" ? `${spin} the lab is learning from the new games`
+    : dl.phase === "publishing" ? `${spin} putting the new games on the website`
+    : dl.tier === "ranks" ? `${spin} downloading: ${(dl.added || 0).toLocaleString()} games so far` : "";
+}
+
+async function loadSolo() {   // every rank's games and the lab's findings (again every few seconds while a download runs)
+  clearTimeout(SOLO.timer);
+  try {
+    const r = await fetch("/api/soloq/ranks");
+    SOLO.data = r.ok ? await r.json() : null;
+  } catch (e) { SOLO.data = null; }
+  renderMode();
+  renderSoloCard();
+  const dl = SOLO.data?.download;
+  if (soloMode() && dl && (dl.running || ["learning", "publishing"].includes(dl.phase))) SOLO.timer = setTimeout(loadSolo, 8000);
+}
+
+function setMode(mode) {
+  if (mode === S.mode || !["pro", "solo"].includes(mode)) return;
+  if (mode === "solo") {   // solo queue: always your own champ select (your side, your role, your pick)
+    S.proSolo = !!S.solo;
+    S.solo = true;
+    if (!S.us) S.us = "B";
+    if (!ROLE_NAME[S.myRole]) S.myRole = POOL?.main_role || "MID";
+  } else S.solo = !!S.proSolo;
+  S.mode = mode;
+  S.banStage = false;
+  SOLO.error = null;
+  renderMode();
+  renderBadge();
+  toast(mode === "solo" ? `Solo queue: the board now answers from ${rankName()} games this season`
+    : "Pro play: the board answers from pro games again");
+  if (mode === "solo") loadSolo();
+  refresh();
+}
+function setRank(rank) {
+  if (!RANKS.includes(rank) || rank === S.rank) return;
+  S.rank = rank;
+  SOLO.error = null;
+  renderMode();
+  renderSoloCard();
+  toast(`${RANK_LABEL[rank]}: picks, matchups, builds and the live win chance from ${RANK_LABEL[rank]} games`);
+  refresh();
+}
+
+function renderSoloEmpty() {   // solo queue mode, and no games for this rank yet: how to get them
+  const el = $("#soloEmpty");
+  const show = soloMode() && !!SOLO.error;
+  el.hidden = !show;
+  document.body.classList.toggle("solo-nodata", show);
+  if (!show) return;
+  const ranks = SOLO.data?.ranks || {};
+  const other = RANKS.filter((r) => r !== S.rank && (ranks[r]?.games || 0) > 0);
+  const dl = SOLO.data?.download;
+  el.innerHTML = `<div class="se-icon" style="--rk:${RANK_COLOR[S.rank]}"><i></i></div>
+    <h2>No ${esc(rankName())} games yet</h2>
+    <p>Solo queue mode answers from this season's ranked games at your rank, downloaded from Riot with your own Riot key (free at developer.riotgames.com). ${dl?.running ? `<b>A download is running</b>: ${(dl.added || 0).toLocaleString()} games so far.` : ""}</p>
+    <div class="se-actions"><button type="button" class="gold" data-go="soloq.html#download">Download solo queue games</button>${other.length ? `<span class="muted">or switch to a rank that has games:</span>${other.map((r) => `<button type="button" class="rank-chip tight" data-rank="${r}" style="--rk:${RANK_COLOR[r]}"><i class="rk-gem"></i>${RANK_LABEL[r]}</button>`).join("")}` : ""}</div>`;
+}
+
+function renderSoloCard() {   // solo queue mode: what's different at this rank (the solo queue lab's findings)
+  const el = $("#soloCard");
+  if (!el) return;
+  el.hidden = !soloMode() || !!SOLO.error;
+  if (el.hidden) return;
+  const rep = SOLO.data?.lab?.ranks?.[S.rank], d = SOLO.data?.ranks?.[S.rank] || {};
+  const finds = rep?.findings || [];
+  const lw = rep?.lead_worth?.["15"], plw = SOLO.data?.lab?.pro?.lead_worth?.["15"];
+  const bar = (p, cls) => `<span class="sc-bar ${cls}"><i style="width:${Math.round((p || 0) * 100)}%"></i></span>`;
+  const leadRow = lw ? `<div class="sc-lead"><span>A 3k gold lead at 15 min wins</span>
+      <div><b>${pct(lw["3"])}</b> ${bar(lw["3"], "solo")} <span class="muted">${esc(rankName())}</span></div>
+      ${plw ? `<div><b>${pct(plw["3"])}</b> ${bar(plw["3"], "pro")} <span class="muted">pro games</span></div>` : ""}</div>` : "";
+  el.innerHTML = `<h2>Solo queue · ${esc(rankName())} <span class="muted">${d.games ? `${d.games.toLocaleString()} games this season${d.patch ? `, newest patch ${esc(d.patch)}` : ""}` : ""}</span></h2>
+    ${finds.length ? `<div class="sc-grid">${leadRow}<ul class="sc-finds">${finds.map((f) => `<li>${esc(f)}</li>`).join("")}</ul></div>`
+      : `<p class="muted">${rep?.note ? esc(rep.note) : "The solo queue lab hasn't measured this rank yet"}: it runs after every download. Until then the board uses default weights for ${esc(rankName())}.</p>`}
+    <p class="muted sc-links">Everything here comes from ${esc(rankName())} games (the ranks next to it add a little evidence where ${esc(rankName())} has few games); pro numbers are untouched.
+      <a href="soloq.html">Every champion and matchup</a> · <a href="/lab.html#solo">How it was tested</a></p>`;
 }
 
 /* -------------------------------------------------------- draft links */
@@ -250,6 +380,14 @@ function bindEvents() {
     }
   });
   $("#undoBtn").onclick = undo;
+  document.addEventListener("click", (e) => {   // the tabs at the top and the rank chips (also in the "no games yet" card)
+    const tab = e.target.closest?.(".mode-tab[data-mode]");
+    if (tab) return setMode(tab.dataset.mode);
+    const rk = e.target.closest?.(".rank-chip[data-rank]");
+    if (rk) return setRank(rk.dataset.rank);
+    const go = e.target.closest?.("button[data-go]");
+    if (go) location.href = go.dataset.go;
+  });
   $("#modalClose").onclick = closeProfile;
   $("#modal").onclick = (e) => { if (e.target.id === "modal") closeProfile(); };
   document.addEventListener("keydown", (e) => { if (e.key === "Escape" && $("#modal").classList.contains("open")) closeProfile(); });
@@ -559,13 +697,20 @@ async function refresh(afterLock = false) {
       keep: following() ? (CL.hover[S.us] || []).filter(Boolean) : [],   // teammates' planned picks: don't suggest banning them
       hover: following() && CL.cs.turn?.mine ? CL.myHover : null,         // what you're hovering: how it ranks
     });
+    if (soloMode()) Object.assign(body, { mode: "solo", rank: S.rank, asOf: null });   // one rank's solo queue games
     const r = await fetch("/api/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const data = await r.json();
-    if (!r.ok) {
+    if (!r.ok && soloMode() && /solo queue games yet/.test(data.error || "")) {   // no games for this rank: say how to get them
+      SOLO.error = data.error;
+      renderSoloEmpty();
+      renderSoloCard();
+      renderBadge();
+    } else if (!r.ok) {
       toast(data.error || "Server error");
       if (afterLock) { const h = S.history.pop(); if (h) (h.t === "ban" ? (h.side === "B" ? S.blueBans : S.redBans) : (h.side === "B" ? S.blue : S.red)).pop(); }
       if (RES) renderTeams();   // take back a champion that was drawn before the server answered
     } else {
+      SOLO.error = null;
       RES = data;
       render();
     }
@@ -761,6 +906,9 @@ function render() {
   renderGrid();
   renderMyBuild();
   renderAnalysis();
+  renderBadge();
+  renderSoloEmpty();
+  renderSoloCard();
   $("#gameNo").textContent = `Game ${S.game || 1}`;
   $("#fearlessList").innerHTML = S.fearless.length ? S.fearless.map((c) => chip(c)).join("") : "none";
 }
@@ -976,7 +1124,7 @@ function soloNote() {   // under the suggestions in solo queue: what the champio
     const better = (pl.best_any || []).filter((x) => !shown.has(x.champ)).map((x) => x.champ);
     if (!pl.fallback && better.length) parts.push(`Best ${role} picks overall: <b>${better.map(esc).join(", ")}</b>.`);
     if (pl.taken?.length) parts.push(`Banned or taken: ${pl.taken.map(esc).join(", ")}.`);
-    if (pl.no_pro_data?.length) parts.push(`Too few pro games as ${role} to judge: ${pl.no_pro_data.map(esc).join(", ")}${RES.solo_db ? "" : ' (a <a href="soloq.html">solo queue database</a> would rate them)'}.`);
+    if (pl.no_pro_data?.length) parts.push(`Too few ${GAMES()} as ${role} to judge: ${pl.no_pro_data.map(esc).join(", ")}${RES.solo_db || soloMode() ? "" : ' (a <a href="soloq.html">solo queue database</a> would rate them)'}.`);
   }
   if (!S.slot) parts.push("Your pick number isn't set, so champions you type count as teammates' picks: click a suggestion (or press Enter on an empty box) to lock yours.");
   if (tip) parts.push(tip);
@@ -1010,11 +1158,11 @@ async function openProfile(name, role = null) {
   body.innerHTML = `<p class="muted">Loading ${esc(name)}…</p>`;
   modal.classList.add("open");
   try {
-    const q = new URLSearchParams({ name });
+    const q = new URLSearchParams({ name, ...(soloMode() ? { mode: "solo", rank: S.rank } : {}) });
     if (role) q.set("role", role);
     const r = await fetch(`/api/champion?${q}`);
     const p = await r.json();
-    if (!r.ok || p.error) { body.innerHTML = `<p>${esc(p.error || "No pro games for this champion.")}</p>`; return; }
+    if (!r.ok || p.error) { body.innerHTML = `<p>${esc(p.error || `No ${GAMES()} for this champion.`)}</p>`; return; }
     const lanes = (lst) => lst.map(([, o, rec]) => chip(o, rec)).join("") || '<span class="muted">not enough games</span>';
     const len = p.length || {};
     body.innerHTML = `<div class="profile-head">${img(champImg(p.champ), p.champ)}<div><h2 id="modalTitle">${esc(p.champ)}</h2>
@@ -1077,21 +1225,36 @@ function whyHTML() {
       ${own.length ? `<h3>Keep for yourself</h3>${own.map((o) => chip(o.champ, ROLE_NAME[o.role])).join("")}` : ""}`;
   }
   const best = RES.recs?.[0];
-  if (!best) return `<h2>No pick</h2><p>${esc(RES.error || "No pro-proven champion fits the open roles.")}</p>`;
+  if (!best) return `<h2>No pick</h2><p>${esc(RES.error || (soloMode() ? `No champion with enough ${GAMES()} fits the open roles.` : "No pro-proven champion fits the open roles."))}</p>`;
   const then = Object.entries(RES.then || {}).filter(([, xs]) => xs.length);
   const needs = RES.plan?.needs || [];
   const likelyNow = RES.likely_now || [];
   return `<h2>${RES.perspective === "enemy" ? `${SIDE[RES.acting]}'s best pick` : "Why"} ${esc(best.champ)} <span class="muted">(${ROLE_NAME[best.role]})</span></h2>
     <div class="big">${pct1(best.evidence.win_after)}</div><div class="muted">${SIDE[RES.acting]} win chance after this pick</div>
     ${reasonsHTML(best)}
-    ${likelyNow.length ? `<h3>Pros in this spot usually pick</h3>${likelyNow.map(([c, r, p]) => chip(c, `${ROLE_NAME[r]} ${pct(p)}`)).join("")}` : ""}
+    ${likelyNow.length ? `<h3>${soloMode() ? `${esc(rankName())} players here usually pick` : "Pros in this spot usually pick"}</h3>${likelyNow.map(([c, r, p]) => chip(c, `${ROLE_NAME[r]} ${pct(p)}`)).join("")}` : ""}
     ${then.length ? `<h3>To finish the comp${needs.length ? ` (needs ${esc(needs.join(", "))})` : ""}</h3>${then.map(([r, xs]) => `<div>${ROLE_NAME[r]}: ${xs.map((x) => chip(x.champ)).join("")}</div>`).join("")}` : ""}
     ${(RES.threats || []).length ? `<h3>Enemy's likely next pick</h3>${RES.threats.map(([c, r, p]) => chip(c, `${ROLE_NAME[r]} ${pct(p)}`)).join("")}` : ""}`;
 }
 
 function verdictHTML() {
   const v = RES.verdict, pb = v.p_blue;
-  const acc = (v.info?.oos_accuracy || {})[v.model];
+  const acc = typeof v.info?.oos_accuracy === "number" ? v.info.oos_accuracy : (v.info?.oos_accuracy || {})[v.model];
+  if (v.solo) {   // solo queue mode: the rank's own model, and the lane matchups it weighs on their own
+    const lanes = Object.entries(v.lanes || {}).filter(([, e]) => Math.abs(e) >= 0.01)
+      .map(([r, e]) => `<span class="chip lane-chip ${e > 0 ? "b" : "r"}">${ROLE_NAME[r]} <b>${e > 0 ? "Blue" : "Red"} +${Math.abs(e * 100).toFixed(1)}%</b></span>`).join("");
+    const drivers = (side) => (v.drivers?.[side] || []).filter((d) => d[2] > 0).slice(0, 3)
+      .map(([r, c, d]) => chip(c, signed(d))).join("") || '<span class="muted">no clear edges</span>';
+    return `<h2>Verdict <span class="muted">· ${esc(rankName())} solo queue</span></h2>
+      <div class="two"><div><div class="big" style="color:var(--blue)">${pct1(pb)}</div><div class="muted">Blue win chance</div></div>
+      <div><div class="big" style="color:var(--red)">${pct1(1 - pb)}</div><div class="muted">Red win chance</div></div></div>
+      ${v.ci ? `<div class="muted">90% range: Blue ${pct(v.ci[0])}-${pct(v.ci[1])}</div>` : ""}
+      <h3>Lane matchups <span class="muted">(beyond the champions' strength)</span></h3>${lanes || '<span class="muted">every lane about even</span>'}
+      <h3>Blue's edges</h3>${drivers("B")}<h3>Red's edges</h3>${drivers("R")}
+      ${acc ? `<p class="muted">The ${esc(rankName())} model called ${pct1(acc)} of ${(v.info?.games_tested || 0).toLocaleString()} ${esc(rankName())} games it hadn't seen. In solo queue the draft decides less than in pro play: who plays it, and who throws, decides more. <a href="/lab.html#solo">How it was tested</a>.</p>`
+        : `<p class="muted">${esc(v.info?.note || "Default weights until the solo queue lab has tested this rank.")}</p>`}
+      ${v.calibration ? `<p class="muted">At this confidence (${esc(v.calibration.bucket)}) the favored side won ${v.calibration.won ? pct(v.calibration.won) : "-"} of ${v.calibration.games} ${esc(rankName())} games in testing.</p>` : ""}`;
+  }
   const drivers = (side) => (v.drivers?.[side] || []).filter((d) => d[2] > 0).slice(0, 3)
     .map(([r, c, d]) => chip(c, signed(d))).join("") || '<span class="muted">no clear edges</span>';
   const ci = v.ci ? `<div class="muted">90% range: Blue ${pct(v.ci[0])}-${pct(v.ci[1])}</div>` : "";
@@ -1121,7 +1284,7 @@ function waysHTML() {   // the finished draft: how each team wins and how it los
     </div>`;
   };
   return `<h2>Ways to win and lose</h2>
-    <p class="muted">For each team, from how pro games with these champions went. The % is the draft's win chance; how the game is played decides the rest.</p>
+    <p class="muted">For each team, from how ${GAMES()} with these champions went. The % is the draft's win chance; how the game is played decides the rest.</p>
     <div class="ways">${col("B")}${col("R")}</div>`;
 }
 
@@ -1169,7 +1332,7 @@ function liveHTML() {
   const G = ["-3", "-1.5", "0", "1.5", "3"];
   const rows = Object.entries(wi).map(([m, row]) => `<tr><td>${esc(m)} min</td>${G.map((g) => `<td>${pct(row[g])}</td>`).join("")}</tr>`).join("");
   return `<h2>Live game</h2>
-    <p class="muted">Follow the game: enter the score as it stands (Blue minus Red). The win chance comes from the lab's minute-by-minute models, trained on LCK and international games, and starts from this draft's prediction.</p>
+    <p class="muted">Follow the game: enter the score as it stands (Blue minus Red). The win chance comes from the lab's minute-by-minute models, ${!soloMode() ? "trained on LCK and international games" : RES.ingame?.source === "pro" ? `trained on pro games for now (${esc(rankName())} gets its own once it has enough games with minute-by-minute data)` : `trained on ${esc(rankName())} solo queue games (where leads are thrown more often than in pro play)`}, and starts from this draft's prediction.</p>
     <div class="live-grid">
       <div class="live-inputs" id="live">
         <div class="wide seg" role="group" aria-label="Score detail">
@@ -1259,8 +1422,8 @@ function applyLiveCard() {   // the running game's score (from the client) into 
 }
 
 function buildHTML(bd) {
-  if (!bd) return "<h2>Runes &amp; items</h2><p class='muted'>No pro games for this champion in this role.</p>";
-  return `<h2>Runes · ${esc(bd.champion)} <span class="muted">(${ROLE_NAME[bd.role]}, ${bd.n} pro games)</span></h2>`
+  if (!bd) return `<h2>Runes &amp; items</h2><p class='muted'>No ${GAMES()} for this champion in this role.</p>`;
+  return `<h2>Runes · ${esc(bd.champion)} <span class="muted">(${ROLE_NAME[bd.role]}, ${bd.n} ${GAMES()})</span></h2>`
     + runesHTML(bd) + spellsHTML(bd) + itemsHTML(bd) + skillsHTML(bd.skills);
 }
 function runesHTML(bd) {   // the rune page, other keystones, and lane-dependent choices
@@ -1779,7 +1942,7 @@ function hoverNote(kind) {   // what the advice thinks of the champion (or ban) 
   const shown = list.findIndex((x) => x.champ === c);
   if (shown === 0) return `Hovering ${esc(c)}: the top ${kind === "ban" ? "ban" : "pick"} ✓`;
   if (!h) return `Hovering ${esc(c)}${shown > 0 ? `: suggestion #${shown + 1}` : ""}`;   // (the advice is still loading)
-  if (!h.rank) return `Hovering ${esc(c)}: too few pro games ${kind === "ban" ? "to rate this ban" : `as ${ROLE_NAME[S.myRole]} to rate it`}`;
+  if (!h.rank) return `Hovering ${esc(c)}: too few ${GAMES()} ${kind === "ban" ? "to rate this ban" : `as ${ROLE_NAME[S.myRole]} to rate it`}`;
   if (kind === "ban") return `Hovering ${esc(c)}: #${h.rank} of ${h.of} bans by threat · best: ${esc(h.best)}`;
   const where = h.pool_rank ? `#${h.pool_rank} of your ${h.pool_of} ${ROLE_NAME[S.myRole]} champions` : `#${h.rank} of ${h.of} ${ROLE_NAME[S.myRole]} picks`;
   const win = h.win != null ? ` · ${signed(h.win)}% win` : "";
@@ -2050,7 +2213,7 @@ function renderMyBuild() {
   MB.key = key;
   const req = ++MB.req;
   $("#mbBody").classList.add("loading");
-  const q = new URLSearchParams({ name: cur.champ, role, vs, enemies: enemies.join(",") });
+  const q = new URLSearchParams({ name: cur.champ, role, vs, enemies: enemies.join(","), ...(soloMode() ? { mode: "solo", rank: S.rank } : {}) });
   fetch(`/api/my-build?${q}`).then((r) => r.json()).then((d) => {
     if (req !== MB.req) return;   // a newer click or pick came in meanwhile
     $("#mbBody").innerHTML = myBuildHTML(d);
@@ -2059,12 +2222,12 @@ function renderMyBuild() {
   }).finally(() => { if (req === MB.req) $("#mbBody").classList.remove("loading"); });
 }
 function myBuildHTML(d) {
-  if (d.error || !d.build) return `<p class="muted">${esc(d.error || "No pro games for this champion in this role yet.")}</p>`;
+  if (d.error || !d.build) return `<p class="muted">${esc(d.error || `No ${GAMES()} for this champion in this role yet.`)}</p>`;
   const bd = d.build;
-  const lane = d.vs ? (d.lane ? ` · <b>${esc(d.lane.record)}</b> in pro games vs ${esc(d.vs)}` : ` · no pro games vs ${esc(d.vs)} yet`) : " · your lane opponent isn't picked yet";
+  const lane = d.vs ? (d.lane ? ` · <b>${esc(d.lane.record)}</b> in ${GAMES()} vs ${esc(d.vs)}` : ` · no ${GAMES()} vs ${esc(d.vs)} yet`) : " · your lane opponent isn't picked yet";
   let h = `<div class="mb-title">${img(champImg(d.champ), d.champ)}<div>
       <div class="mb-name">${esc(d.champ)} <span>${ROLE_NAME[d.role] || ""}${d.vs ? ` vs ${esc(d.vs)}` : ""}</span></div>
-      <div class="muted">${bd.n} pro games${lane}</div></div></div>`;
+      <div class="muted">${bd.n} ${GAMES()}${lane}</div></div></div>`;
   const en = d.enemy;
   if (en) {
     const bits = [`${pct(1 - en.ap)} physical / ${pct(en.ap)} magic damage`];
@@ -2084,7 +2247,7 @@ function matchHTML() {
   if (!mu || !window.ACPMatchups) return "";
   const lanes = mu.lanes.filter((l) => l.p != null).length;
   return `<h2>Every matchup</h2>
-    <p class="muted">${lanes ? `${lanes} lane${lanes === 1 ? "" : "s"} set so far` : "No lane has both champions yet"}: who counters whom in pro games (LCK, LPL, internationals, plus other regions' games where they add evidence).</p>
+    <p class="muted">${lanes ? `${lanes} lane${lanes === 1 ? "" : "s"} set so far` : "No lane has both champions yet"}: who counters whom in ${soloMode() ? `${esc(rankName())} solo queue (the ranks next to it add evidence where ${esc(rankName())} has few games)` : "pro games (LCK, LPL, internationals, plus other regions' games where they add evidence)"}.</p>
     ${ACPMatchups.html(mu, { mine: S.us === "R" ? "R" : S.us === "B" ? "B" : null, img: champImg, gridOpen: MU.open })}`;
 }
 document.addEventListener("toggle", (e) => {   // remember whether the all-pairs grid is open

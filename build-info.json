@@ -1,8 +1,9 @@
 {
- "fingerprint": "c4094195aad97885",
- "built": "2026-11-22 20:27",
+ "fingerprint": "406389a9723d6cab",
+ "built": "2026-11-23 00:02",
  "pro_games": 3741,
  "newest": "2026-11-14",
  "latest_event": "Worlds 2026 Main Event",
- "solo_games": 0
+ "solo_games": 0,
+ "solo_ranks": []
 }

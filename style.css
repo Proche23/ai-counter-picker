@@ -1745,3 +1745,91 @@ body.phone .start-card .team-btn { flex: 1 1 0; min-width: 0; min-height: 42px; 
 #leagueBtn.lg-update::after { content: ""; position: absolute; top: 3px; right: 3px; width: 7px; height: 7px; border-radius: 50%;
   background: var(--accent); box-shadow: 0 0 0 2px var(--bg0), 0 0 6px rgba(var(--accent-rgb), .7); pointer-events: none; }
 .lg-upd { margin: 0 0 10px; padding: 9px 11px; border-left: 2px solid var(--accent); background: rgba(var(--accent-rgb), .07); font-size: 13px; line-height: 1.55; }
+
+/* ---------------------------------------------------------------- pro play / solo queue (the tabs at the very top) */
+.modebar { position: relative; z-index: 21; display: flex; align-items: stretch; gap: 14px; flex-wrap: wrap; padding: 0 20px;
+  background: linear-gradient(180deg, rgba(var(--bg0-rgb), 1), rgba(var(--bg0-rgb), .92)); border-bottom: 1px solid rgba(var(--accent-dk-rgb), .28); }
+.mode-tabs { display: flex; align-items: stretch; gap: 2px; }
+button.mode-tab { min-height: 46px; padding: 6px 20px 6px 16px; gap: 10px; border: 0; background: none; box-shadow: none; color: var(--text-dim);
+  display: inline-grid; grid-template-columns: auto auto; grid-template-rows: auto auto; column-gap: 10px; row-gap: 1px; align-content: center; text-align: left; }
+button.mode-tab::before { display: none; }
+button.mode-tab::after { inset: auto 10px 0 10px !important; height: 2px; border: 0 !important; opacity: 0; transform: scaleX(.3);
+  background: linear-gradient(90deg, transparent, var(--accent) 20%, var(--accent-hi) 50%, var(--accent) 80%, transparent); transition: opacity var(--t) var(--ease), transform var(--t) var(--ease); }
+button.mode-tab svg { grid-row: 1 / span 2; align-self: center; width: 18px; height: 18px; fill: none; stroke: currentColor; stroke-width: 1.5; stroke-linejoin: round; }
+.mode-tab .mt-name { font-size: 13.5px; letter-spacing: 2.2px; }
+.mode-tab small { grid-column: 2; font: 500 10.5px/1.2 Inter, system-ui, sans-serif; letter-spacing: .2px; text-transform: none; color: var(--text-dim); opacity: .8; }
+button.mode-tab:hover { color: var(--gold-hi); background: rgba(var(--accent-rgb), .04); box-shadow: none; }
+button.mode-tab:hover::after { opacity: .55; transform: scaleX(1); }
+button.mode-tab.on { color: var(--gold-hi); text-shadow: 0 0 14px rgba(var(--accent-rgb), .4); background: linear-gradient(180deg, transparent, rgba(var(--accent-rgb), .07)); }
+button.mode-tab.on::after { opacity: 1; transform: scaleX(1); }
+button.mode-tab.on svg { stroke: var(--energy); filter: drop-shadow(0 0 5px rgba(var(--energy-rgb), .6)); }
+.rank-pick { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; padding: 6px 0; }
+.rank-pick[hidden] { display: none; }
+button.rank-chip { --rk: var(--accent); min-height: 32px; padding: 0 11px 0 9px; gap: 7px; font-size: 11px; letter-spacing: 1.2px; color: var(--text-dim);
+  background: linear-gradient(180deg, var(--face), var(--face2)) padding-box, linear-gradient(180deg, color-mix(in srgb, var(--rk) 55%, transparent), rgba(var(--accent-dk-rgb), .5)) border-box; }
+button.rank-chip .rk-gem { width: 9px; height: 9px; transform: rotate(45deg); background: var(--rk); box-shadow: 0 0 0 1px rgba(var(--bg0-rgb), .9), 0 0 6px color-mix(in srgb, var(--rk) 60%, transparent); flex: none; }
+button.rank-chip small { font: 600 10px/1 Inter, system-ui, sans-serif; letter-spacing: 0; color: var(--text-dim); opacity: .85; text-transform: none; }
+button.rank-chip:hover { color: var(--white); }
+button.rank-chip.on { color: var(--white); background: linear-gradient(180deg, color-mix(in srgb, var(--rk) 22%, var(--face)), var(--face2)) padding-box,
+  linear-gradient(180deg, var(--rk), color-mix(in srgb, var(--rk) 40%, var(--bg0))) border-box; box-shadow: 0 0 14px color-mix(in srgb, var(--rk) 35%, transparent), inset 0 0 0 1px rgba(var(--bg0-rgb), .9); }
+button.rank-chip.on small { color: var(--white); }
+button.rank-chip.empty { opacity: .62; }
+button.rank-chip.empty.on { opacity: 1; }
+button.rank-chip.tight { min-height: 28px; }
+.mode-note { align-self: center; margin-left: auto; color: var(--text-dim); font-size: 12px; }
+/* solo queue mode: the own-draft switch is always on (it isn't shown), and the board wears the rank's colour */
+body.mode-solo .solo-switch { display: none !important; }
+body.mode-solo .keys > span.data { color: var(--text); }
+/* no games for this rank yet */
+.solo-empty { margin: 4px 0 12px; padding: 18px 18px 16px; border: 1px solid var(--edge); background: radial-gradient(ellipse at 50% 0%, rgba(var(--accent-rgb), .08), transparent 70%), var(--panel); text-align: center; }
+.solo-empty h2 { margin: 6px 0 6px; font-family: Cinzel, serif; color: var(--gold-hi); font-size: 19px; letter-spacing: 1.5px; }
+.solo-empty p { margin: 0 auto 12px; max-width: 520px; color: var(--text); font-size: 13.5px; line-height: 1.55; }
+.se-icon { --rk: var(--accent); display: flex; justify-content: center; }
+.se-icon i { width: 26px; height: 26px; transform: rotate(45deg); border: 2px solid var(--rk); box-shadow: inset 0 0 0 4px var(--bg0), inset 0 0 0 9px color-mix(in srgb, var(--rk) 70%, transparent), 0 0 18px color-mix(in srgb, var(--rk) 40%, transparent); }
+.se-actions { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 8px 10px; }
+.se-actions .btn { text-decoration: none; }
+body.solo-nodata .recs, body.solo-nodata .recs-title, body.solo-nodata .winbar, body.solo-nodata .wb-note, body.solo-nodata #analysis { display: none; }
+/* what's different at this rank (the solo queue lab) */
+.solo-card h2 .muted { font-family: Inter, system-ui, sans-serif; font-size: 12.5px; letter-spacing: 0; text-transform: none; }
+.sc-grid { display: grid; grid-template-columns: minmax(220px, 300px) minmax(0, 1fr); gap: 14px 22px; align-items: start; }
+.sc-lead { padding: 10px 12px; border: 1px solid var(--edge); background: rgba(var(--bg0-rgb), .35); display: grid; gap: 6px; font-size: 12.5px; color: var(--text); }
+.sc-lead > div { display: grid; grid-template-columns: 38px 1fr auto; align-items: center; gap: 8px; }
+.sc-lead b { color: var(--white); font-size: 15px; }
+.sc-bar { height: 7px; background: rgba(var(--bg0-rgb), .8); border: 1px solid rgba(var(--accent-dk-rgb), .4); }
+.sc-bar i { display: block; height: 100%; }
+.sc-bar.solo i { background: linear-gradient(90deg, var(--energy-dk), var(--energy)); }
+.sc-bar.pro i { background: linear-gradient(90deg, var(--accent-dk), var(--accent)); }
+.sc-finds { margin: 0; padding-left: 18px; display: grid; gap: 5px; font-size: 13px; line-height: 1.5; color: var(--text); }
+.sc-finds li::marker { color: var(--gold); }
+.sc-links { margin: 12px 0 0; }
+.lane-chip.b b { color: var(--blue); }
+.lane-chip.r b { color: var(--red); }
+@media (max-width: 900px) {
+  .sc-grid { grid-template-columns: 1fr; }
+}
+@media (max-width: 640px) {
+  .modebar { padding: 0 8px; gap: 4px 8px; }
+  button.mode-tab { min-height: 40px; padding: 4px 10px; }
+  .mode-tab small { display: none; }
+  .rank-pick { flex-wrap: nowrap; overflow-x: auto; width: 100%; padding: 4px 0 6px; scrollbar-width: none; }
+  .rank-pick::-webkit-scrollbar { display: none; }
+  button.rank-chip { flex: none; min-height: 30px; }
+  .mode-note { display: none; }
+}
+
+/* Solo queue page: the rank filter and every rank's download progress */
+.rk-iron { --rk: #8a7b74; } .rk-bronze { --rk: #b77b55; } .rk-silver { --rk: #a8bac4; } .rk-gold { --rk: #e0b252; }
+.rk-platinum { --rk: #4fc2ad; } .rk-emerald { --rk: #34c77b; } .rk-diamond { --rk: #7d99f5; } .rk-master { --rk: #bd74ee; }
+.sq-rankf { flex-wrap: wrap; }
+.sq-rankf button { gap: 6px; }
+.sq-rankf button i { width: 8px; height: 8px; transform: rotate(45deg); background: var(--rk, var(--accent)); flex: none; }
+.sq-rankf button.empty { opacity: .55; }
+.sq-season { color: var(--text); font-size: 13px; }
+.sq-ranks { display: flex; flex-wrap: wrap; gap: 6px 8px; margin-top: 8px; }
+.sq-rk { --rk: var(--accent); display: inline-flex; align-items: baseline; gap: 6px; padding: 4px 9px; border: 1px solid color-mix(in srgb, var(--rk) 45%, transparent); background: rgba(var(--bg0-rgb), .45); font-size: 12px; color: var(--text); }
+.sq-rk i { width: 7px; height: 7px; transform: rotate(45deg); background: var(--rk); align-self: center; }
+.sq-rk b { color: var(--white); }
+.sq-rk small { color: var(--text-dim); font-size: 10.5px; }
+
+/* Lab page: the solo queue table's pro row */
+table.t tr.pro-row td { color: var(--gold-hi); border-top: 1px solid rgba(var(--accent-rgb), .35); }

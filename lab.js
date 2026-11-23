@@ -747,6 +747,50 @@ async function searchArchive() {
   document.querySelectorAll("#aTable [data-open]").forEach((b) => { b.onclick = () => openInBoard(b.dataset.open); });
 }
 
+/* Solo queue by rank: the solo queue lab (soloq_lab.py), next to the pro numbers */
+const RANK_ORDER = ["iron", "bronze", "silver", "gold", "platinum", "emerald", "diamond", "master"];
+function soloSection(d) {
+  const lab = d?.lab || {}, ranks = lab.ranks || {}, pro = lab.pro || {};
+  const have = RANK_ORDER.filter((r) => ranks[r]);
+  if (!have.length) {
+    return `<section class="card" id="solo"><h2>Solo queue by rank</h2>
+      <p class="lead">The board's Solo queue tab answers from this season's ranked games at your rank. Each rank is tested here the same way as the pro games once its games are downloaded (Solo queue page, your own Riot key): the lab runs after every download.</p>
+      <p class="muted">No solo queue games yet.</p></section>`;
+  }
+  const plw = pro.lead_worth?.["15"]?.["3"];
+  const leadBars = have.filter((r) => ranks[r].lead_worth?.["15"]).map((r) => {
+    const x = ranks[r].lead_worth["15"];
+    return barRow(`${esc(ranks[r].label)}<div class="muted">${(x.games || 0).toLocaleString()} games at 15 min</div>`, x["3"],
+      { lo: 0.5, hi: 1, ref: plw ?? null, title: `${ranks[r].label}: a 3,000 gold lead at 15 minutes won ${pct(x["3"], 1)}${plw ? ` (pro games: ${pct(plw, 1)})` : ""}` });
+  });
+  const accBars = have.filter((r) => ranks[r].draft?.accuracy).map((r) => {
+    const x = ranks[r].draft;
+    return barRow(`${esc(ranks[r].label)}<div class="muted">${(x.games_tested || 0).toLocaleString()} unseen games · side alone ${pct(x.baseline_accuracy, 1)}</div>`, x.accuracy,
+      { lo: 0.4, hi: 0.7, title: `${ranks[r].label}: the draft called ${pct(x.accuracy, 1)}, log-loss ${x.logloss} (side alone ${x.baseline_logloss})` });
+  });
+  const rows = have.map((r) => {
+    const x = ranks[r], w = x.draft?.worth_5pct || {}, th = x.throws || {};
+    return `<tr><td>${esc(x.label)}</td><td class="num">${(x.games || 0).toLocaleString()}</td><td class="num">${(x.timelines || 0).toLocaleString()}</td>
+      <td class="num">${w.lane != null ? `${w.lane >= 0 ? "+" : ""}${w.lane.toFixed(1)}%` : "-"}</td><td class="num">${w.counter != null ? `${w.counter >= 0 ? "+" : ""}${w.counter.toFixed(1)}%` : "-"}</td>
+      <td class="num">${w.strength != null ? `${w.strength >= 0 ? "+" : ""}${w.strength.toFixed(1)}%` : "-"}</td>
+      <td class="num">${th.behind3_at15_won?.rate != null ? pct(th.behind3_at15_won.rate) : "-"}</td><td class="num">${th.lost_after_4k?.rate != null ? pct(th.lost_after_4k.rate) : "-"}</td>
+      <td class="num">${x.blue_wr ? pct(x.blue_wr[0], 1) : "-"}</td><td class="num">${x.length ? `${x.length.avg} min` : "-"}</td></tr>`;
+  });
+  const pth = pro.throws || {};
+  return `<section class="card" id="solo"><h2>Solo queue by rank</h2>
+    <p class="lead">The board's Solo queue tab is tested here like the pro games: each rank's games are split by date into blocks, and every block is predicted with statistics from the games before it only (and weights fitted on the blocks before it). The lane matchups get a weight of their own, because solo lanes snowball. ${lab.made ? `Last run ${esc(String(lab.made).slice(0, 10))}.` : ""}</p>
+    ${accBars.length ? `<h3>How well the draft calls solo queue games</h3><div class="bars">${accBars.join("")}</div>${axis(0.4, 0.7)}` : ""}
+    ${leadBars.length ? `<h3>Leads get thrown: a 3,000 gold lead at 15 minutes wins…</h3><p class="muted">Dashed line: pro games${plw ? ` (${pct(plw)})` : ""}.</p><div class="bars">${leadBars.join("")}</div>${axis(0.5, 1)}` : ""}
+    <h3>What matters at each rank</h3>
+    <div style="overflow-x:auto"><table class="t"><thead><tr><th>Rank</th><th class="num">Games</th><th class="num">Minute by minute</th>
+      <th class="num" title="win chance from one lane matchup 5 points in your favour">Lane +5%</th><th class="num" title="from one of the other matchups 5 points in your favour">Other matchup +5%</th>
+      <th class="num" title="from a champion 5 points stronger">Champion +5%</th><th class="num" title="teams 3,000 gold behind at 15 minutes that still won">Won 3k behind</th>
+      <th class="num" title="teams that led by 4,000+ gold after 10 minutes and still lost">Lost a 4k lead</th><th class="num">Blue side</th><th class="num">Length</th></tr></thead>
+      <tbody>${rows.join("")}${pro.games ? `<tr class="pro-row"><td>Pro games</td><td class="num">${pro.games.toLocaleString()}</td><td class="num">${pro.games.toLocaleString()}</td><td class="num">-</td><td class="num">-</td><td class="num">-</td>
+        <td class="num">${pth.behind3_at15_won?.rate != null ? pct(pth.behind3_at15_won.rate) : "-"}</td><td class="num">${pth.lost_after_4k?.rate != null ? pct(pth.lost_after_4k.rate) : "-"}</td><td class="num">-</td><td class="num">-</td></tr>` : ""}</tbody></table></div>
+    <p class="muted">${esc(lab.min_games ? `A rank is fitted once it has ${lab.min_games} games, and gets its own live win-chance models at ${lab.min_timelines} games with a timeline.` : "")}</p></section>`;
+}
+
 async function init() {
   let lab;
   try { lab = await (await fetch("/api/lab")).json(); } catch (e) { $("#labMeta").textContent = "Can't reach the server."; return; }
@@ -765,5 +809,10 @@ async function init() {
   drawAll();
   window.addEventListener("resize", drawAll);
   loadGames();
+  try {   // solo queue by rank (after the pro report: it's a section of its own)
+    const solo = await (await fetch("/api/soloq/ranks")).json();
+    $("#lab").querySelector("section")?.insertAdjacentHTML("afterend", soloSection(solo));
+    if (location.hash === "#solo") document.getElementById("solo")?.scrollIntoView({ block: "start" });
+  } catch (e) { /* no solo queue section */ }
 }
 init();

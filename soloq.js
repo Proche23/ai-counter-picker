@@ -41,17 +41,26 @@ const PHASE = {
   starting: () => "Starting…",
   ladder: (d) => `Reading the ${esc(d.tier_label || "")} ladder…`,
   players: (d) => `Finding games: <b>${num(d.found)}</b> new so far, from ${num(d.players_used || 0)} players`,
-  games: (d) => `Downloading games: <b>${num(d.checked || 0)}</b> of ${num(Math.min(d.target, d.found || d.target))}`,
-  done: (d) => `Done: <b>${num(d.added)}</b> games added`,
-  stopped: (d) => `Stopped: <b>${num(d.added || 0)}</b> games added (the rest are remembered; download again to continue)`,
+  games: (d) => (d.tier === "ranks" ? `Downloading every rank: <b>${num(d.added || 0)}</b> games so far (${num(d.timelines || 0)} minute by minute)`
+    : `Downloading games: <b>${num(d.checked || 0)}</b> of ${num(Math.min(d.target, d.found || d.target))}`),
+  learning: () => "The solo queue lab is learning from the new games (a few minutes)…",
+  publishing: () => "Putting the new games on the website…",
+  done: (d) => `Done: <b>${num(d.added)}</b> games added${d.tier === "ranks" ? `, and the lab ${d.lab_error ? `couldn't learn from them (${esc(d.lab_error)})` : "has learned from them"}` : ""}`,
+  stopped: (d) => `Stopped: <b>${num(d.added || 0)}</b> games added${d.tier === "ranks" && d.added ? " and learned from" : ""} (the rest are remembered; download again to continue)`,
   error: (d) => `<span class="err">${esc(d.error || "Something went wrong.")}</span>`,
 };
 const eta = (s) => (s == null ? "" : s < 90 ? "about a minute left" : s < 3600 ? `about ${Math.round(s / 60)} min left` : `about ${(s / 3600).toFixed(1)} h left`);
 const GAMES_OPTS = [[1000, "1,000", "~20 min"], [3000, "3,000", "~1 h"], [10000, "10,000", "~3.5 h"]];
+// every rank, this season: games plus minute-by-minute timelines for part of them (~2,200 games an hour)
+const RANK_GAMES_OPTS = [[8000, "8,000", "~4 h"], [24000, "24,000", "~11 h"], [400000, "As many as possible", "until stopped or the key runs out"]];
+const RANKS = ["iron", "bronze", "silver", "gold", "platinum", "emerald", "diamond", "master"];
+const RANK_LABEL = { iron: "Iron", bronze: "Bronze", silver: "Silver", gold: "Gold", platinum: "Platinum", emerald: "Emerald", diamond: "Diamond", master: "Master+" };
+let RANK = "";   // the table: every rank, or one
 const DAYS_OPTS = [[7, "7 days"], [14, "14 days"], [21, "21 days"], [30, "30 days"]];
-let FORM = { games: 3000, tier: "master", days: 21, platform: null, open: false };
+let FORM = { games: 24000, tier: "ranks", days: 21, platform: null, open: false };
 
 function progressOf(d) {
+  if (d.tier === "ranks") return d.phase === "learning" ? 0.99 : d.phase === "done" ? 1 : 0.01 + 0.98 * Math.min(1, (d.added || 0) / Math.max(1, d.target));
   if (d.phase === "games") return 0.06 + 0.94 * Math.min(1, (d.checked || 0) / Math.max(1, Math.min(d.target, d.found || d.target)));
   if (d.phase === "players") return 0.01 + 0.05 * Math.min(1, (d.found || 0) / Math.max(1, d.target));
   if (d.phase === "done") return 1;
@@ -73,13 +82,16 @@ function formHTML() {
     `<button type="button" data-v="${v}" class="${String(v) === String(cur) ? "on" : ""}">${a}${b ? `<small>${b}</small>` : ""}</button>`).join("")}</div>`;
   const plats = Object.entries(META.platforms || {}).map(([k, n]) => `<option value="${k}"${k === FORM.platform ? " selected" : ""}>${esc(n)}</option>`).join("");
   return `<div class="sq-form">
-    <div class="field"><span class="field-name">Games</span>${seg("games", GAMES_OPTS, FORM.games)}</div>
     <div class="field"><span class="field-name">Players</span>${seg("tier", Object.entries(META.tiers).map(([k, v]) => [k, v]), FORM.tier)}</div>
-    <div class="field"><span class="field-name">Played in the last</span>${seg("days", DAYS_OPTS, FORM.days)}</div>
+    <div class="field"><span class="field-name">Games</span>${seg("games", FORM.tier === "ranks" ? RANK_GAMES_OPTS : GAMES_OPTS, FORM.games)}</div>
+    ${FORM.tier === "ranks" ? `<div class="field"><span class="field-name">Played</span><span class="sq-season">this season, Iron to Challenger, shared evenly between the ranks</span></div>`
+      : `<div class="field"><span class="field-name">Played in the last</span>${seg("days", DAYS_OPTS, FORM.days)}</div>`}
     <label class="field"><span class="field-name">Server</span><select id="sqPlat">${plats}</select></label>
-    <button id="sqGo" class="gold big-go">Download ${num(FORM.games)} games</button>
+    <button id="sqGo" class="gold big-go">${FORM.games >= 400000 ? "Download as many as possible" : `Download ${num(FORM.games)} games`}</button>
   </div>
-  <p class="muted">Riot lets a key make 100 requests every 2 minutes, so about 3,000 games an hour. It runs in the background while this site is open,
+  <p class="muted">${FORM.tier === "ranks"
+    ? "Every rank gets its own games (and, for the board's live win chance, minute-by-minute data for about a third of them). When it finishes, or when you stop it, the solo queue lab learns from the new games: the draft board's Solo queue tab then answers from them."
+    : ""} Riot lets a key make 100 requests every 2 minutes, so about ${FORM.tier === "ranks" ? "2,200" : "3,000"} games an hour. It runs in the background while this site is open,
   and you can stop it any time: what's downloaded stays, and the next download continues where it stopped.</p>`;
 }
 
@@ -88,9 +100,9 @@ function renderDb() {
   const has = s.games > 0, running = !!d.running;
   const tiles = has ? `<div class="sq-tiles">
       <div class="tile"><div class="k">Games</div><div class="v">${num(s.games)}</div><div class="s">${s.oldest ? `${esc(s.oldest)} to ${esc(s.newest)}` : ""}</div></div>
-      <div class="tile"><div class="k">Patches</div><div class="v">${s.patches.length ? esc(s.patches[0].patch) : "–"}</div><div class="s">${s.patches.slice(0, 3).map((p) => `${esc(p.patch)}: ${num(p.games)}`).join(" · ")}</div></div>
+      <div class="tile"><div class="k">Patches</div><div class="v">${s.patches.length ? esc(s.patches[0].name || s.patches[0].patch) : "–"}</div><div class="s">${s.patches.slice(0, 3).map((p) => `${esc(p.name || p.patch)}: ${num(p.games)}`).join(" · ")}</div></div>
       <div class="tile"><div class="k">Players</div><div class="v">${esc(tierMix(s.tiers))}</div><div class="s">${Object.keys(s.platforms || {}).map((p) => esc((META.platforms || {})[p] || p)).join(", ")}</div></div>
-      <div class="tile"><div class="k">Kept apart</div><div class="v sm">Pro data untouched</div><div class="s">The board uses these only for champions with under ${THIN} pro games in a role</div></div>
+      <div class="tile"><div class="k">Kept apart</div><div class="v sm">Pro data untouched</div><div class="s">The draft board's <a href="/">Solo queue tab</a> answers from these, rank by rank</div></div>
     </div>` : "";
   let body;
   if (running) {
@@ -98,7 +110,8 @@ function renderDb() {
     body = `<div class="sq-run"><div class="sq-runhead"><span class="spin" aria-hidden="true"></span><span>${(PHASE[d.phase] || PHASE.starting)(d)}</span>
         <span class="muted">${eta(d.eta_s)}</span><button id="sqStop">Stop</button></div>
       <div class="sq-prog" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="${Math.round(p * 100)}"><i style="width:${(p * 100).toFixed(1)}%"></i></div>
-      <p class="muted">${esc(d.tier_label)} on ${esc((META.platforms || {})[d.platform] || d.platform)}, games from the last ${d.days} days · ${num(d.requests)} requests so far. You can keep using the site.</p></div>`;
+      <p class="muted">${esc(d.tier_label)} on ${esc((META.platforms || {})[d.platform] || d.platform)}, ${d.tier === "ranks" ? "this season" : `games from the last ${d.days} days`} · ${num(d.requests)} requests so far. You can keep using the site.</p>
+      ${d.ranks ? `<div class="sq-ranks">${Object.entries(d.ranks).map(([r, x]) => `<span class="sq-rk rk-${r}"><i></i>${esc(x.label || RANK_LABEL[r])} <b>${num(x.added || 0)}</b><small>${num(x.timelines || 0)} timelines</small></span>`).join("")}</div>` : ""}</div>`;
   } else {
     const last = d.phase && d.phase !== "starting" ? `<p class="sq-last">${(PHASE[d.phase] || (() => ""))(d)}</p>` : "";
     let ctrl;
@@ -121,17 +134,21 @@ function renderDb() {
     ? `<div class="sq-dbhead"><h2>Solo queue database</h2></div>${tiles}${body}`
     : `<div class="sq-hero"><div class="sq-hero-mark" aria-hidden="true">${roleSvg("MID")}</div><div>
         <h2>Build your solo queue database</h2>
-        <p class="lead">A database of its own for ranked solo queue: the best players on your server, their recent games, every champion in every role,
-        each lane matchup, best teammates and common builds. It never mixes with the pro games. On the draft board, solo queue mode uses it only
-        for champions with too few pro games to judge (fewer than ${THIN} in that role), and marks them <span class="sqtag">SOLO Q</span>.</p></div></div>${body}`;
+        <p class="lead">A database of its own for ranked solo queue: this season's games at every rank, Iron to Challenger, every champion in every role,
+        each lane matchup, best teammates and common builds, and for part of the games the whole game minute by minute. It never mixes with the pro games.
+        The draft board's <b>Solo queue</b> tab answers from it, from the games of your rank.</p></div></div>${body}`;
   wireDb();
 }
-function tierMix(t) {
+function tierMix(t) {   // "Iron to Challenger", "Master+"...
   const k = Object.keys(t || {});
   if (!k.length) return "–";
-  const order = ["CHALLENGER", "GRANDMASTER", "MASTER", "DIAMOND", "EMERALD"];
-  const low = order.filter((x) => k.includes(x)).pop() || k[0];
-  return `${low[0]}${low.slice(1).toLowerCase()}+`;
+  const order = ["IRON", "BRONZE", "SILVER", "GOLD", "PLATINUM", "EMERALD", "DIAMOND", "MASTER", "GRANDMASTER", "CHALLENGER"];
+  const have = order.filter((x) => k.includes(x));
+  if (!have.length) return k[0];
+  const name = (x) => `${x[0]}${x.slice(1).toLowerCase()}`;
+  const low = have[0], high = have[have.length - 1];
+  if (high === "CHALLENGER" && ["MASTER", "GRANDMASTER", "DIAMOND", "EMERALD"].includes(low)) return `${name(low)}+`;
+  return low === high ? name(low) : `${name(low)} to ${name(high)}`;
 }
 
 function wireDb() {
@@ -142,6 +159,7 @@ function wireDb() {
     if (!b) return;
     const f = g.dataset.f, v = b.dataset.v;
     FORM[f] = f === "tier" ? v : Number(v);
+    if (f === "tier") FORM.games = v === "ranks" ? 24000 : 3000;
     renderDb();
   }));
   $("#sqPlat")?.addEventListener("change", (e) => { FORM.platform = e.target.value; });
@@ -183,7 +201,7 @@ function wireDb() {
 async function poll(once) {
   clearTimeout(POLL);
   const before = META.summary.games;
-  const m = await getJSON(`/api/soloq/meta?patch=${encodeURIComponent($("#patch").value)}`);
+  const m = await getJSON(`/api/soloq/meta?${qs()}`);
   if (!m.error) {
     const was = META.download?.running;
     META = m;
@@ -191,20 +209,39 @@ async function poll(once) {
     renderHead();
     if (m.summary.games !== before || (was && !m.download.running)) { fillPatches(); renderTabs(); loadRole(); }
   }
-  if (!once && META.download?.running) POLL = setTimeout(poll, 2000);
-  else if (META.download?.running) POLL = setTimeout(poll, 2000);
+  const busy = META.download?.running || META.download?.phase === "learning";
+  if (busy) POLL = setTimeout(poll, 2000);
 }
 
 // ------------------------------------------------------------------ champions by role
+const qs = () => `patch=${encodeURIComponent($("#patch").value)}${RANK ? `&rank=${RANK}` : ""}`;
+function renderRankFilter() {   // every rank together, or one rank's games only
+  const el = $("#rankFilter");
+  if (!el) return;
+  const per = META.ranks || {};
+  el.hidden = !Object.values(per).some((n) => n > 0);
+  el.innerHTML = `<button type="button" data-rank="" class="${RANK ? "" : "on"}">All ranks</button>` + RANKS.map((r) =>
+    `<button type="button" data-rank="${r}" class="rk-${r}${r === RANK ? " on" : ""}${per[r] ? "" : " empty"}" title="${esc(RANK_LABEL[r])}: ${num(per[r] || 0)} games"><i></i>${esc(RANK_LABEL[r])}</button>`).join("");
+}
+document.addEventListener("click", async (e) => {
+  const b = e.target.closest?.("#rankFilter button[data-rank]");
+  if (!b || b.dataset.rank === RANK) return;
+  RANK = b.dataset.rank;
+  OPEN = null;
+  const m = await getJSON(`/api/soloq/meta?${qs()}`);
+  if (!m.error) META = m;
+  renderHead(); fillPatches(); renderTabs(); loadRole();
+});
 function renderHead() {
   const s = META.summary;
-  $("#sqMeta").textContent = s.games ? `${num(s.games)} ranked solo queue games · ${tierMix(s.tiers)} · ${s.patches.length ? `patch ${s.patches[0].patch}` : ""}${s.newest ? ` · newest ${s.newest}` : ""}`
-    : "No solo queue games yet";
+  $("#sqMeta").textContent = s.games ? `${num(s.games)} ranked solo queue games${RANK ? ` · ${RANK_LABEL[RANK]}` : ` · ${tierMix(s.tiers)}`} · ${s.patches.length ? `patch ${s.patches[0].name || s.patches[0].patch}` : ""}${s.newest ? ` · newest ${s.newest}` : ""}`
+    : (RANK ? `No ${RANK_LABEL[RANK]} games yet` : "No solo queue games yet");
+  renderRankFilter();
   $("#browse").hidden = !s.games;
 }
 function fillPatches() {
   const sel = $("#patch"), cur = sel.value;
-  sel.innerHTML = `<option value="">All patches</option>` + META.summary.patches.map((p) => `<option value="${esc(p.patch)}">Patch ${esc(p.patch)} (${num(p.games)})</option>`).join("");
+  sel.innerHTML = `<option value="">All patches</option>` + META.summary.patches.map((p) => `<option value="${esc(p.patch)}">Patch ${esc(p.name || p.patch)} (${num(p.games)})</option>`).join("");
   sel.value = META.summary.patches.some((p) => p.patch === cur) ? cur : "";
 }
 function renderTabs() {
@@ -215,7 +252,7 @@ function renderTabs() {
 async function loadRole() {
   const my = ++seq;
   $("#rows").innerHTML = Array.from({ length: 8 }, () => `<tr class="skel"><td colspan="9"><i></i></td></tr>`).join("");
-  const r = await getJSON(`/api/soloq/role?role=${ROLE}&patch=${encodeURIComponent($("#patch").value)}`);
+  const r = await getJSON(`/api/soloq/role?role=${ROLE}&${qs()}`);
   if (my !== seq) return;
   if (r.error) { $("#rows").innerHTML = `<tr><td colspan="9" class="err">${esc(r.error)}</td></tr>`; return; }
   ROWS = r.rows || [];
@@ -299,7 +336,7 @@ async function openChamp(champ, role) {
   history.replaceState(null, "", `#${encodeURIComponent(champ)}/${role}`);
   const box = $("#detail");
   box.classList.add("loading");
-  const d = await getJSON(`/api/soloq/champ?name=${encodeURIComponent(champ)}&role=${role}&patch=${encodeURIComponent($("#patch").value)}`);
+  const d = await getJSON(`/api/soloq/champ?name=${encodeURIComponent(champ)}&role=${role}&${qs()}`);
   box.classList.remove("loading");
   if (!SEL || SEL.champ !== champ) return;
   OPEN = d;
@@ -360,8 +397,10 @@ async function init() {
   const [hc, hr] = h.split("/");
   if (ROLES.includes(hr)) ROLE = hr;
   if (hc && hr) SEL = { champ: hc, role: ROLE };
+  if (h === "download") FORM.open = true;   // (the draft board's "Download solo queue games" button)
   renderHead();
   renderDb();
+  if (h === "download") $("#dbCard").scrollIntoView({ block: "start" });
   fillPatches();
   renderTabs();
   if (META.summary.games) loadRole();
