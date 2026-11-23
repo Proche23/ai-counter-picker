@@ -1873,3 +1873,98 @@ label.lg-switch { display: flex; align-items: center; justify-content: space-bet
 label.lg-switch:hover { color: var(--gold-hi); }
 label.lg-switch input { flex: none; }
 .lg-actions { display: flex; justify-content: flex-end; padding-top: 12px; }
+
+/* ---------------------------------------------------------------- themed buttons: a shape and ornament per region
+   Each theme gives the buttons a look of its own, not just its colours. Hextech (the default) keeps the square
+   frame with gold corner marks. A shape is a corner radius or a cut outline (clip-path); joined button groups
+   (.seg) take it at their two ends only. The big start-card buttons, the tabs, the theme tiles and the small icon
+   buttons keep their own look. */
+:root { --btn-r: 0px; --btn-clip: none; --orn-inset: 4px; }
+button:where(:not(.mini, .linkish, .pr, .th-tile, .th-x, .modal-x, .mode-tab, .team-btn, .mode-btn)):where(:not(.seg *, .role-tabs *)) {
+  border-radius: var(--btn-r); clip-path: var(--btn-clip);
+}
+.seg > button:first-child { border-top-left-radius: var(--btn-r); border-bottom-left-radius: var(--btn-r); }
+.seg > button:last-child { border-top-right-radius: var(--btn-r); border-bottom-right-radius: var(--btn-r); }
+.seg { clip-path: var(--btn-clip); }
+html[data-theme]:not([data-theme="hextech"]) button:focus-visible { outline-offset: -5px; }   /* (inside a cut outline) */
+/* every theme's ornament keeps its place on hover (the Hextech corner marks open out instead) */
+html[data-theme]:not([data-theme="hextech"]) button:where(:not(.mini, .linkish, .pr, .th-tile, .th-x, .modal-x, .mode-tab, .team-btn, .mode-btn, .rchip, .slot-btn, .rank-chip, #leagueBtn)):where(:not(.seg *, .role-tabs *))::after {
+  inset: var(--orn-inset);
+}
+html[data-theme]:not([data-theme="hextech"]) button:where(:not(.mini, .linkish, .pr, .th-tile, .th-x, .modal-x, .mode-tab, .team-btn, .mode-btn, .rchip, .slot-btn, .rank-chip, #leagueBtn)):where(:not(.seg *, .role-tabs *)):hover::after {
+  inset: var(--orn-inset); opacity: 1;
+}
+
+/* Piltover: art deco brass: chamfered corners, a double rule above and below the label */
+html[data-theme="piltover"] { --btn-clip: polygon(7px 0, calc(100% - 7px) 0, 100% 7px, 100% calc(100% - 7px), calc(100% - 7px) 100%, 7px 100%, 0 calc(100% - 7px), 0 7px); --orn-inset: 4px 12px; }
+html[data-theme="piltover"] button:where(:not(.mini, .linkish, .pr, .th-tile, .th-x, .modal-x, .mode-tab, .team-btn, .mode-btn, .rchip, .slot-btn, .rank-chip, #leagueBtn)):where(:not(.seg *, .role-tabs *))::after {
+  background: linear-gradient(var(--mark), var(--mark)) center top / 100% 1px no-repeat, linear-gradient(var(--mark), var(--mark)) center 3px / 60% 1px no-repeat,
+    linear-gradient(var(--mark), var(--mark)) center bottom / 100% 1px no-repeat, linear-gradient(var(--mark), var(--mark)) center calc(100% - 3px) / 60% 1px no-repeat;
+}
+/* Zaun: the undercity: slanted plates, hazard stripes along the bottom */
+html[data-theme="zaun"] { --btn-clip: polygon(9px 0, 100% 0, calc(100% - 9px) 100%, 0 100%); --orn-inset: auto 12px 3px 12px; }
+html[data-theme="zaun"] button:where(:not(.mini, .linkish, .pr, .th-tile, .th-x, .modal-x, .mode-tab, .team-btn, .mode-btn, .rchip, .slot-btn, .rank-chip, #leagueBtn)):where(:not(.seg *, .role-tabs *))::after {
+  height: 3px; background: repeating-linear-gradient(135deg, var(--mark) 0 4px, transparent 4px 8px);
+}
+/* Noxus: aggressive steel: two opposite corners cut away, a blade line down the left */
+html[data-theme="noxus"] { --btn-clip: polygon(0 0, calc(100% - 11px) 0, 100% 11px, 100% 100%, 11px 100%, 0 calc(100% - 11px)); --orn-inset: 5px auto 5px 5px; }
+html[data-theme="noxus"] button:where(:not(.mini, .linkish, .pr, .th-tile, .th-x, .modal-x, .mode-tab, .team-btn, .mode-btn, .rchip, .slot-btn, .rank-chip, #leagueBtn)):where(:not(.seg *, .role-tabs *))::after {
+  width: 2px; background: linear-gradient(180deg, transparent, var(--mark) 25% 75%, transparent);
+}
+/* Demacia: a banner, rounded at the top, with a crest pearl above the label */
+html[data-theme="demacia"] { --btn-r: 12px 12px 3px 3px; --orn-inset: 2px; }
+html[data-theme="demacia"] button:where(:not(.mini, .linkish, .pr, .th-tile, .th-x, .modal-x, .mode-tab, .team-btn, .mode-btn, .rchip, .slot-btn, .rank-chip, #leagueBtn)):where(:not(.seg *, .role-tabs *))::after {
+  background: radial-gradient(circle at 50% 1px, var(--mark) 0 2px, transparent 2.6px), linear-gradient(90deg, transparent, var(--mark), transparent) center bottom / 70% 1px no-repeat;
+}
+/* Freljord: ice: softly rounded, with frost glowing in from the edges */
+html[data-theme="freljord"] { --btn-r: 7px; --orn-inset: 2px; }
+html[data-theme="freljord"] button:where(:not(.mini, .linkish, .pr, .th-tile, .th-x, .modal-x, .mode-tab, .team-btn, .mode-btn, .rchip, .slot-btn, .rank-chip, #leagueBtn)):where(:not(.seg *, .role-tabs *))::after {
+  border-radius: 5px; background: none; box-shadow: inset 0 0 9px rgba(var(--energy-hi-rgb), .3), inset 0 1px 0 rgba(var(--energy-hi-rgb), .45);
+}
+/* Ionia: spirit blossoms: round petals, no hard marks, a soft bloom from below */
+html[data-theme="ionia"] { --btn-r: 999px; --orn-inset: 2px; }
+html[data-theme="ionia"] button:where(:not(.mini, .linkish, .pr, .th-tile, .th-x, .modal-x, .mode-tab, .team-btn, .mode-btn, .rchip, .slot-btn, .rank-chip, #leagueBtn)):where(:not(.seg *, .role-tabs *))::after {
+  border-radius: 999px; background: radial-gradient(ellipse at 50% 120%, rgba(var(--energy-rgb), .35), transparent 70%); opacity: .5;
+}
+/* Shurima: sun tablets: pointed ends, gold lines above and below, a sun disc in the middle */
+html[data-theme="shurima"] { --btn-clip: polygon(12px 0, calc(100% - 12px) 0, 100% 50%, calc(100% - 12px) 100%, 12px 100%, 0 50%); --orn-inset: 3px 13px; }
+html[data-theme="shurima"] button:where(:not(.mini, .linkish, .pr, .th-tile, .th-x, .modal-x, .mode-tab, .team-btn, .mode-btn, .rchip, .slot-btn, .rank-chip, #leagueBtn)):where(:not(.seg *, .role-tabs *))::after {
+  background: linear-gradient(var(--mark), var(--mark)) top / 100% 1px no-repeat, linear-gradient(var(--mark), var(--mark)) bottom / 100% 1px no-repeat;
+  opacity: .55;
+}
+html[data-theme="shurima"] button:where(:not(.mini, .linkish, .pr, .th-tile, .th-x, .modal-x, .mode-tab, .team-btn, .mode-btn)):where(:not(.seg *, .role-tabs *)) { padding-left: 20px; padding-right: 20px; }
+/* Targon: starlight: round, with a few stars scattered across */
+html[data-theme="targon"] { --btn-r: 999px; --orn-inset: 3px 16px; }
+html[data-theme="targon"] button:where(:not(.mini, .linkish, .pr, .th-tile, .th-x, .modal-x, .mode-tab, .team-btn, .mode-btn, .rchip, .slot-btn, .rank-chip, #leagueBtn)):where(:not(.seg *, .role-tabs *))::after {
+  background: radial-gradient(circle, var(--mark) 0 1px, transparent 1.6px) 3px 4px / 23px 13px, radial-gradient(circle, var(--mark) 0 .8px, transparent 1.3px) 14px 10px / 31px 17px;
+  opacity: .5;
+}
+/* Shadow Isles: the Black Mist: a ghostly second outline that glows */
+html[data-theme="shadowisles"] { --btn-r: 3px; --orn-inset: 3px; }
+html[data-theme="shadowisles"] button:where(:not(.mini, .linkish, .pr, .th-tile, .th-x, .modal-x, .mode-tab, .team-btn, .mode-btn, .rchip, .slot-btn, .rank-chip, #leagueBtn)):where(:not(.seg *, .role-tabs *))::after {
+  background: none; border: 1px solid rgba(var(--energy-rgb), .45); border-radius: 2px; box-shadow: 0 0 8px rgba(var(--energy-rgb), .25), inset 0 0 8px rgba(var(--energy-rgb), .2);
+}
+/* Bilgewater: rope and planks: a stitched line inside a rounded plank */
+html[data-theme="bilgewater"] { --btn-r: 5px; --orn-inset: 3px; }
+html[data-theme="bilgewater"] button:where(:not(.mini, .linkish, .pr, .th-tile, .th-x, .modal-x, .mode-tab, .team-btn, .mode-btn, .rchip, .slot-btn, .rank-chip, #leagueBtn)):where(:not(.seg *, .role-tabs *))::after {
+  background: none; border: 1px dashed var(--mark); border-radius: 3px; opacity: .6;
+}
+/* Bandle City: bubbly and bright: big round corners, a dot in each, a little hop when you hover */
+html[data-theme="bandle"] { --btn-r: 16px; --orn-inset: 4px 7px; }
+html[data-theme="bandle"] button:where(:not(.mini, .linkish, .pr, .th-tile, .th-x, .modal-x, .mode-tab, .team-btn, .mode-btn, .rchip, .slot-btn, .rank-chip, #leagueBtn)):where(:not(.seg *, .role-tabs *))::after {
+  background: radial-gradient(circle, var(--mark) 0 2px, transparent 2.6px) left top / 6px 6px no-repeat, radial-gradient(circle, var(--mark) 0 2px, transparent 2.6px) right top / 6px 6px no-repeat,
+    radial-gradient(circle, var(--mark) 0 2px, transparent 2.6px) left bottom / 6px 6px no-repeat, radial-gradient(circle, var(--mark) 0 2px, transparent 2.6px) right bottom / 6px 6px no-repeat;
+}
+html[data-theme="bandle"] button:where(:not(.mini, .linkish, .pr, .th-tile, .th-x, .modal-x, .mode-tab, .team-btn, .mode-btn)):where(:not(.seg *, .role-tabs *)):hover { transform: translateY(-1px) scale(1.03); }
+/* Ixtal: a jungle temple: stepped corners, carved jade blocks */
+html[data-theme="ixtal"] { --btn-clip: polygon(6px 0, calc(100% - 6px) 0, calc(100% - 6px) 3px, 100% 3px, 100% calc(100% - 3px), calc(100% - 6px) calc(100% - 3px), calc(100% - 6px) 100%, 6px 100%, 6px calc(100% - 3px), 0 calc(100% - 3px), 0 3px, 6px 3px); --orn-inset: 6px 9px; }
+html[data-theme="ixtal"] button:where(:not(.mini, .linkish, .pr, .th-tile, .th-x, .modal-x, .mode-tab, .team-btn, .mode-btn, .rchip, .slot-btn, .rank-chip, #leagueBtn)):where(:not(.seg *, .role-tabs *))::after {
+  background: linear-gradient(var(--mark), var(--mark)) left top / 4px 4px no-repeat, linear-gradient(var(--mark), var(--mark)) right top / 4px 4px no-repeat,
+    linear-gradient(var(--mark), var(--mark)) left bottom / 4px 4px no-repeat, linear-gradient(var(--mark), var(--mark)) right bottom / 4px 4px no-repeat;
+  opacity: .6;
+}
+/* The Void: alien and uneven: lopsided corners and a violet glow rising from below */
+html[data-theme="void"] { --btn-r: 14px 2px 14px 2px; --orn-inset: 2px; }
+html[data-theme="void"] button:where(:not(.mini, .linkish, .pr, .th-tile, .th-x, .modal-x, .mode-tab, .team-btn, .mode-btn, .rchip, .slot-btn, .rank-chip, #leagueBtn)):where(:not(.seg *, .role-tabs *))::after {
+  border-radius: 12px 1px 12px 1px; background: radial-gradient(ellipse at 50% 130%, rgba(var(--energy-rgb), .5), transparent 70%);
+}
