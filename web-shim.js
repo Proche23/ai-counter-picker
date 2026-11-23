@@ -6,7 +6,7 @@
    browser. Following the League client, phone mode, the tracker window and Riot look-ups need the PC. */
 (() => {
   const realFetch = window.fetch.bind(window);
-  const V = "515abff2d1";   // (build_web.py: this build's stamp, so a browser never mixes files from two builds)
+  const V = "f0a9c731fe";   // (build_web.py: this build's stamp, so a browser never mixes files from two builds)
   const BASE = new URL(".", document.currentScript?.src || location.href);   // where the site's files are
   const file = (p) => `${new URL(p, BASE).href}?v=${V}`;
   const STATIC = { "/api/meta": "data/meta.json", "/api/lab": "data/lab.json", "/api/lab_games": "data/lab_games.json" };
@@ -95,7 +95,7 @@
     clearTimeout(CL.timer);
     let next = 3000, st, raw = null;
     try {
-      const quiet = prefs().quietInGame === false ? 0 : 1;   // (quiet in game unless switched off in the League panel)
+      const quiet = prefs().quietInGame === true ? 1 : 0;   // (the live score in game, unless "Quiet during games" is on)
       const r = await realFetch(`${HELPER}/state?quiet=${quiet}`, { cache: "no-store" });
       if (!r.ok) throw new Error(`the helper answered ${r.status}`);
       raw = await r.json();

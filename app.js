@@ -1596,10 +1596,10 @@ function renderClient() {   // the status pill in the settings bar
 /* The League button (top right): whether the board can see your League client, and on the website
    (which can't see programs on your PC by itself) how to connect it with the League helper. */
 const LG = { open: false, timer: 0, shown: "" };
-const QUIET = { value: null };   // quiet during games (shared setting "quietInGame", on unless switched off)
+const QUIET = { value: null };   // quiet during games (shared setting "quietInGame": an opt-in, off unless switched on)
 function quietInGame() {
   if (QUIET.value !== null) return QUIET.value;
-  return (CL.st?.prefs || {}).quietInGame !== false;
+  return (CL.st?.prefs || {}).quietInGame === true;
 }
 const isWeb = () => document.documentElement.classList.contains("web");
 function leagueStatus() {   // [state, button label, what to say]
@@ -1659,9 +1659,9 @@ function renderLeagueModal() {
     <p class="lg-now">${text}</p>${steps}
     <div class="lg-row"><label class="chk"><input type="checkbox" id="lgFollow"${S.follow ? " checked" : ""}> Follow the client: the board fills itself in</label>
       ${isWeb() && state !== "on" && state !== "paused" ? '<button type="button" id="lgRetry">Check again</button>' : ""}</div>
-    <div class="lg-row lg-quiet"><label class="chk"><input type="checkbox" id="lgQuiet"${quietInGame() ? " checked" : ""}> Quiet during games <span class="muted">(recommended)</span></label>
+    <div class="lg-row lg-quiet"><label class="chk"><input type="checkbox" id="lgQuiet"${quietInGame() ? " checked" : ""}> Quiet during games <span class="muted">(optional)</span></label>
       <span class="muted">${quietInGame() ? "While your game runs, nothing reads League or the game; it picks up again by itself when the game ends. (The live score isn't filled in by itself: type it in if you want it.)"
-        : "Off: during games the live score is read from the game (Riot's official live-game data) and filled in by itself."}</span></div></div>`;
+        : "Off: during games the live score is read from the game (Riot's official live-game data) and the win chance updates in real time."}</span></div></div>`;
   $("#lgFollow").onchange = (e) => { $("#followOn").checked = e.target.checked; $("#followOn").dispatchEvent(new Event("change")); };
   $("#lgRetry")?.addEventListener("click", () => { window.acpClient?.retry(); toast("Looking for the League helper…"); });
   $("#lgQuiet").onchange = (e) => {
