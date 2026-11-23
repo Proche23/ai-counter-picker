@@ -214,7 +214,8 @@ function renderMode() {   // the tab strip at the top, and the rank picker under
   }
   const dl = SOLO.data?.download;
   const spin = '<span class="spin-inline" aria-hidden="true"></span>';
-  $("#modeNote").innerHTML = !solo || !dl?.running ? ""
+  $("#modeNote").innerHTML = !solo ? "The pro board: picks, bans and win chances from <b>pro games only</b>, never solo queue"
+    : !dl?.running ? ""
     : dl.phase === "learning" ? `${spin} the lab is learning from the new games`
     : dl.phase === "publishing" ? `${spin} putting the new games on the website`
     : dl.tier === "ranks" ? `${spin} downloading: ${(dl.added || 0).toLocaleString()} games so far` : "";
@@ -244,6 +245,7 @@ function setMode(mode) {
   S.banStage = false;
   SOLO.error = null;
   renderMode();
+  renderPool();   // (the settings row follows at once: solo queue's own draft settings, or the pro ones)
   renderBadge();
   toast(mode === "solo" ? `Solo queue: the board now answers from ${rankName()} games this season`
     : "Pro play: the board answers from pro games again");
@@ -271,8 +273,10 @@ function renderSoloEmpty() {   // solo queue mode, and no games for this rank ye
   const dl = SOLO.data?.download;
   el.innerHTML = `<div class="se-icon" style="--rk:${RANK_COLOR[S.rank]}"><i></i></div>
     <h2>No ${esc(rankName())} games yet</h2>
-    <p>Solo queue mode answers from this season's ranked games at your rank, downloaded from Riot with your own Riot key (free at developer.riotgames.com). ${dl?.running ? `<b>A download is running</b>: ${(dl.added || 0).toLocaleString()} games so far.` : ""}</p>
-    <div class="se-actions"><button type="button" class="gold" data-go="soloq.html#download">Download solo queue games</button>${other.length ? `<span class="muted">or switch to a rank that has games:</span>${other.map((r) => `<button type="button" class="rank-chip tight" data-rank="${r}" style="--rk:${RANK_COLOR[r]}"><i class="rk-gem"></i>${RANK_LABEL[r]}</button>`).join("")}` : ""}</div>`;
+    <p>${dl?.web ? esc(SOLO.error || "")
+      : `Solo queue mode answers from this season's ranked games at your rank, downloaded from Riot with your own Riot key (free at developer.riotgames.com). ${dl?.running ? `<b>A download is running</b>: ${(dl.added || 0).toLocaleString()} games so far.` : ""}`}</p>
+    <div class="se-actions">${SOLO.data?.download?.web ? "" : `<button type="button" class="gold" data-go="soloq.html#download">Download solo queue games</button>`}
+      <button type="button" class="mode-back" data-mode-go="pro">Back to Pro play</button>${other.length ? `<span class="muted">or switch to a rank that has games:</span>${other.map((r) => `<button type="button" class="rank-chip tight" data-rank="${r}" style="--rk:${RANK_COLOR[r]}"><i class="rk-gem"></i>${RANK_LABEL[r]}</button>`).join("")}` : ""}</div>`;
 }
 
 function renderSoloCard() {   // solo queue mode: what's different at this rank (the solo queue lab's findings)
@@ -386,7 +390,9 @@ function bindEvents() {
     const rk = e.target.closest?.(".rank-chip[data-rank]");
     if (rk) return setRank(rk.dataset.rank);
     const go = e.target.closest?.("button[data-go]");
-    if (go) location.href = go.dataset.go;
+    if (go) return (location.href = go.dataset.go);
+    const back = e.target.closest?.("button[data-mode-go]");
+    if (back) setMode(back.dataset.modeGo);
   });
   $("#modalClose").onclick = closeProfile;
   $("#modal").onclick = (e) => { if (e.target.id === "modal") closeProfile(); };
@@ -700,7 +706,7 @@ async function refresh(afterLock = false) {
     if (soloMode()) Object.assign(body, { mode: "solo", rank: S.rank, asOf: null });   // one rank's solo queue games
     const r = await fetch("/api/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const data = await r.json();
-    if (!r.ok && soloMode() && /solo queue games yet/.test(data.error || "")) {   // no games for this rank: say how to get them
+    if (!r.ok && soloMode() && /solo queue games (yet|on this website)/.test(data.error || "")) {   // no games for this rank: say how to get them
       SOLO.error = data.error;
       renderSoloEmpty();
       renderSoloCard();
