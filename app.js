@@ -1842,11 +1842,16 @@ function renderLeagueModal() {
       <a class="lg-dl" href="${esc(window.acpClient.helperUrl)}" download>Download it</a>, extract it over the old one (right-click, <i>Extract All</i>),
       then close the old helper's window and double-click <b>Start League Helper.cmd</b> again.</p>` : "";
   const steps = isWeb() && state === "none" ? `<ol class="lg-steps">
-      <li><a class="lg-dl" href="${esc(window.acpClient?.helperUrl || "league-helper.zip")}" download>Download the League helper</a> (Windows, about 6 KB) and extract it: right-click the zip, <i>Extract All</i>. (Started from inside the zip, its window closes at once.)</li>
-      <li>Double-click <b>Start League Helper.cmd</b>. If Windows says it protected your PC: <i>More info</i>, then <i>Run anyway</i>. Keep the small window it opens running while you play.</li>
+      <li><a class="lg-dl" href="${esc(window.acpClient?.helperUrl || "league-helper.zip")}" download>Download the League helper</a> (Windows, about 8 KB).
+        So Windows won't ask about it: right-click the zip, <i>Properties</i>, tick <b>Unblock</b> at the bottom, <i>OK</i>.
+        Then right-click it, <i>Extract All</i>. (Started from inside the zip, its window closes at once.)</li>
+      <li>Double-click <b>Start League Helper.cmd</b>. If Windows still asks (it does for any new program from the internet that isn't signed:
+        "Windows protected your PC" or "SmartScreen can't be reached"), click <b>Run</b>, or <i>More info</i> then <i>Run anyway</i>.
+        Keep the small window it opens running while you play.</li>
       <li>That's all: this button turns teal and the board follows your client by itself. Your browser may ask once whether this site may connect to apps on this device: choose <b>Allow</b>.</li></ol>
     ${/^(127\.0\.0\.1|localhost)$/.test(location.hostname) ? "" : `<p class="lg-alt">Started it and this still says <i>not connected</i>? Your browser may be stopping this page from reaching apps on your PC. Open the board through the helper instead: <a href="http://127.0.0.1:8799/" target="_blank" rel="noopener"><b>127.0.0.1:8799</b></a> (the same site, and it always connects).</p>`}
-    <p class="muted">The helper only reads, through the same local connection tools like Porofessor and Blitz use, and never clicks, picks or changes anything. It answers only on this PC, and only to this website.</p>` : "";
+    <p class="muted">The helper only reads, through the same local connection tools like Porofessor and Blitz use, and never clicks, picks or changes anything. It answers only on this PC, and only to this website. It's plain text: open <b>league-helper.ps1</b> in Notepad to read every line.</p>
+    <p class="muted">A website can't see programs on your PC by itself (browsers don't allow it), so something small has to run there. With the full AI Counter Picker on this PC, its own board (<b>website.bat</b>) follows the client with no helper at all.</p>` : "";
   $("#modalBody").innerHTML = `<div class="lg-panel"><h2><span class="lg-gem big" data-state="${state}" aria-hidden="true"></span>League client</h2>
     <p class="lg-now">${text}</p>${steps}${update}
     <div class="lg-row"><label class="chk"><input type="checkbox" id="lgFollow"${S.follow ? " checked" : ""}> Follow the client: the board fills itself in</label>
