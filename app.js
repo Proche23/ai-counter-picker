@@ -1577,6 +1577,7 @@ function renderClient() {   // the status pill in the settings bar
       case "GameStart": case "InProgress": case "Reconnect":
         state = "game"; main = "In game";
         sub = st.paused ? "quiet while you play: nothing reads League until the game ends"
+          : !S.follow ? "follow is off · switch on Follow and the live score fills itself in"
           : st.game ? `live score · ${fmtClock(st.game.time)}` : "waiting for the game to load"; break;
       case "WaitingForStats": case "PreEndOfGame": case "EndOfGame":
         state = "idle"; main = "Game over"; sub = "queue again and the next draft starts by itself"; break;
@@ -1602,6 +1603,15 @@ function quietInGame() {
   return (CL.st?.prefs || {}).quietInGame === true;
 }
 const isWeb = () => document.documentElement.classList.contains("web");
+const olderVersion = (a, b) => {   // "1.3" before "1.4"?
+  const x = String(a).split(".").map(Number), y = String(b).split(".").map(Number);
+  for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0);
+  return false;
+};
+function helperOutdated() {   // the website: a League helper older than the newest one is connected
+  const have = CL.st?.helper, newest = window.acpClient?.helperNewest;
+  return !!(isWeb() && have && newest && olderVersion(have, newest));
+}
 function leagueStatus() {   // [state, button label, what to say]
   const st = CL.st || {};
   if (st.status === "on" && st.paused) {
@@ -1612,9 +1622,9 @@ function leagueStatus() {   // [state, button label, what to say]
       InProgress: "in game", Reconnect: "in game" }[st.phase] || "in the client";
     const label = { Matchmaking: "In queue", ReadyCheck: "Match found", ChampSelect: "Champ select", GameStart: "In game",
       InProgress: "In game", Reconnect: "In game" }[st.phase] || "Connected";
-    return ["on", label, `Connected to your League client${st.account ? ` as <b>${esc(st.account)}</b>` : ""}, ${where}. ${S.follow
-      ? "The board follows it by itself: the queue, bans, picks, your team's hovers, the timer, then the live game."
-      : "Follow is off: switch it on below and the board fills itself in."}`];
+    const intro = `Connected to your League client${st.account ? ` as <b>${esc(st.account)}</b>` : ""}, ${where}.`;
+    if (!S.follow) return ["off", "Follow off", `${intro} <b>Follow is off</b>, so the board doesn't fill itself in (no picks, no live score): switch it on below.`];
+    return ["on", label, `${intro} The board follows it by itself: the queue, bans, picks, your team's hovers, the timer, then the live game.`];
   }
   if (st.status === "off") return ["off", "Open League", isWeb()
     ? "The League helper is running. Open the League client and it connects by itself."
@@ -1630,10 +1640,18 @@ function renderLeagueBtn() {
   const b = $("#leagueBtn");
   if (!b) return;
   const [state, label, text] = leagueStatus();
+  const old = helperOutdated();
   b.dataset.state = state;
+  b.classList.toggle("lg-update", old);
   b.querySelector(".lg-txt").textContent = label;
-  b.title = text.replace(/<[^>]+>/g, "");
-  if (LG.open && LG.shown !== state + text + S.follow) renderLeagueModal();
+  b.title = text.replace(/<[^>]+>/g, "") + (old ? " A newer League helper is out: click for it." : "");
+  if (old && !LG.toldUpdate) {   // (once per browser for each new helper, so it's never a nag)
+    LG.toldUpdate = true;
+    let told = "";
+    try { told = localStorage.getItem("acp-helper-told") || ""; localStorage.setItem("acp-helper-told", window.acpClient.helperNewest); } catch (e) { /* */ }
+    if (told !== window.acpClient.helperNewest) toast("A newer League helper is out: click League (top right) to get it");
+  }
+  if (LG.open && LG.shown !== state + text + S.follow + old) renderLeagueModal();
 }
 function openLeague() {
   LG.open = true;
@@ -1648,7 +1666,12 @@ function openLeague() {
 }
 function renderLeagueModal() {
   const [state, , text] = leagueStatus();
-  LG.shown = state + text + S.follow;
+  const old = helperOutdated();
+  LG.shown = state + text + S.follow + old;
+  const update = old ? `<p class="lg-upd"><b>A newer League helper is out</b> (${esc(window.acpClient.helperNewest)}; yours is ${esc(CL.st.helper)}).
+      It keeps following your games even if its window gets clicked or the game is slow to answer.
+      <a class="lg-dl" href="${esc(window.acpClient.helperUrl)}" download>Download it</a>, extract it over the old one,
+      then close the old helper's window and double-click <b>Start League Helper.cmd</b> again.</p>` : "";
   const steps = isWeb() && state === "none" ? `<ol class="lg-steps">
       <li><a class="lg-dl" href="${esc(window.acpClient?.helperUrl || "league-helper.zip")}" download>Download the League helper</a> (Windows, about 6 KB) and extract it.</li>
       <li>Double-click <b>Start League Helper.cmd</b>. If Windows says it protected your PC: <i>More info</i>, then <i>Run anyway</i>. Keep the small window it opens running while you play.</li>
@@ -1656,9 +1679,9 @@ function renderLeagueModal() {
     ${/^(127\.0\.0\.1|localhost)$/.test(location.hostname) ? "" : `<p class="lg-alt">Started it and this still says <i>not connected</i>? Your browser may be stopping this page from reaching apps on your PC. Open the board through the helper instead: <a href="http://127.0.0.1:8799/" target="_blank" rel="noopener"><b>127.0.0.1:8799</b></a> (the same site, and it always connects).</p>`}
     <p class="muted">The helper only reads, through the same local connection tools like Porofessor and Blitz use, and never clicks, picks or changes anything. It answers only on this PC, and only to this website.</p>` : "";
   $("#modalBody").innerHTML = `<div class="lg-panel"><h2><span class="lg-gem big" data-state="${state}" aria-hidden="true"></span>League client</h2>
-    <p class="lg-now">${text}</p>${steps}
+    <p class="lg-now">${text}</p>${steps}${update}
     <div class="lg-row"><label class="chk"><input type="checkbox" id="lgFollow"${S.follow ? " checked" : ""}> Follow the client: the board fills itself in</label>
-      ${isWeb() && state !== "on" && state !== "paused" ? '<button type="button" id="lgRetry">Check again</button>' : ""}</div>
+      ${isWeb() && CL.st?.status !== "on" ? '<button type="button" id="lgRetry">Check again</button>' : ""}</div>
     <div class="lg-row lg-quiet"><label class="chk"><input type="checkbox" id="lgQuiet"${quietInGame() ? " checked" : ""}> Quiet during games <span class="muted">(optional)</span></label>
       <span class="muted">${quietInGame() ? "While your game runs, nothing reads League or the game; it picks up again by itself when the game ends. (The live score isn't filled in by itself: type it in if you want it.)"
         : "Off: during games the live score is read from the game (Riot's official live-game data) and the win chance updates in real time."}</span></div></div>`;

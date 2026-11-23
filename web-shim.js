@@ -6,7 +6,7 @@
    browser. Following the League client, phone mode, the tracker window and Riot look-ups need the PC. */
 (() => {
   const realFetch = window.fetch.bind(window);
-  const V = "f0a9c731fe";   // (build_web.py: this build's stamp, so a browser never mixes files from two builds)
+  const V = "10e657bab8";   // (build_web.py: this build's stamp, so a browser never mixes files from two builds)
   const BASE = new URL(".", document.currentScript?.src || location.href);   // where the site's files are
   const file = (p) => `${new URL(p, BASE).href}?v=${V}`;
   const STATIC = { "/api/meta": "data/meta.json", "/api/lab": "data/lab.json", "/api/lab_games": "data/lab_games.json" };
@@ -38,12 +38,25 @@
     ready.catch(() => {});
     return ready;
   }
-  async function engine(method, path, query, body) {
+  async function engine(method, path, query, body, timeout = 0) {   // (timeout: restart the engine if it never answers)
     try { await boot(); } catch (e) { return json({ error: `The engine couldn't start in this browser (${e.message}). Reload the page to try again.` }, 503); }
     const id = ++n;
-    const out = await new Promise((resolve) => { waiting.set(id, resolve); worker.postMessage({ id, method, path, query, body }); });
+    const out = await new Promise((resolve) => {
+      waiting.set(id, resolve);
+      worker.postMessage({ id, method, path, query, body });
+      if (timeout) setTimeout(() => { if (waiting.has(id)) restart("the engine stopped answering"); }, timeout);
+    });
     const r = JSON.parse(out);
     return json(r.body, r.status);
+  }
+  function restart(why) {   // the engine crashed or got stuck: answer everything waiting on it, and start it again
+    try { worker?.terminate(); } catch (e) { /* already gone */ }
+    worker = null; ready = null;
+    Object.assign(state, { stage: "Restarting the engine…", error: null, done: false });
+    const gone = JSON.stringify({ status: 503, body: { error: `${why}; it's starting again` } });
+    for (const w of waiting.values()) w(gone);
+    waiting.clear();
+    boot();
   }
 
   // ---- a small note while the engine warms up (the first visit downloads Python once, then it's cached)
@@ -82,7 +95,12 @@
   // engine turns that into the board's state (the same Python as the PC version), and the page's live
   // request (/api/client) is answered like the PC version's: at once when something changed, else when it does.
   const HELPER = "http://127.0.0.1:8799";
-  const CL = { v: 0, st: { status: "nohelper" }, last: "", waiters: [], started: false, first: null, timer: 0 };
+  const HELPER_NEWEST = "1.4";   // (build_web.py: web/league-helper.ps1's version; an older helper still works, and the League window offers this one)
+  // Nothing may stop the board following for good: every look at the helper and every read by the engine has
+  // a time limit, a look that never ends is given up on, and a hidden page looks again as soon as it's shown.
+  const ASK_MS = 8000, PARSE_MS = 20000, GRACE_MS = 12000;   // (a read by the engine takes well under a second)
+  const CL = { v: 0, st: { status: "nohelper" }, last: "", waiters: [], started: false, first: null, timer: 0,
+               running: null, gen: 0, startedAt: 0, okAt: 0 };
   function publish(st) {
     const text = JSON.stringify(st);
     if (text === CL.last) return;
@@ -91,35 +109,72 @@
     CL.v += 1;
     CL.waiters.splice(0).forEach((wake) => wake());
   }
-  async function pollHelper() {
-    clearTimeout(CL.timer);
-    let next = 3000, st, raw = null;
+  async function askHelper() {   // what the client shows right now, through the helper
+    const quiet = prefs().quietInGame === true ? 1 : 0;   // (the live score in game, unless "Quiet during games" is on)
+    const stop = new AbortController(), t = setTimeout(() => stop.abort(), ASK_MS);
     try {
-      const quiet = prefs().quietInGame === true ? 1 : 0;   // (the live score in game, unless "Quiet during games" is on)
-      const r = await realFetch(`${HELPER}/state?quiet=${quiet}`, { cache: "no-store" });
+      const r = await realFetch(`${HELPER}/state?quiet=${quiet}`, { cache: "no-store", signal: stop.signal });
       if (!r.ok) throw new Error(`the helper answered ${r.status}`);
-      raw = await r.json();
-    } catch (e) {
-      st = { status: "nohelper" };   // (not running, or this browser won't let the page reach it)
+      const raw = await r.json();
+      if (!raw || typeof raw !== "object") throw new Error("the helper's answer was empty");
+      return raw;
+    } finally {
+      clearTimeout(t);
     }
-    if (raw && !raw.client) st = { status: "off", helper: raw.helper };
-    else if (raw) {
-      try {
-        const res = await engine("POST", "/api/client-parse", "", JSON.stringify(raw));
-        st = await res.json();
-        if (!res.ok) throw new Error(st.error || `error ${res.status}`);
-        st.helper = raw.helper;
-        const ph = st.phase;
-        next = st.paused ? 5000 : ph === "ChampSelect" ? 400 : (ph === "Matchmaking" || ph === "ReadyCheck") ? 700
-          : ["GameStart", "InProgress", "Reconnect"].includes(ph) ? 2000 : 1500;
-        if (ph === "Matchmaking" && CL.st.phase === "Matchmaking" && CL.st.queue_since) st.queue_since = CL.st.queue_since;   // (a steady queue timer)
-      } catch (e) {
-        st = { status: "error", error: `couldn't read what the client shows (${e.message})` };
-      }
-    }
-    publish(st);
-    CL.timer = setTimeout(pollHelper, document.visibilityState === "hidden" && st.status !== "on" ? 6000 : next);
   }
+  async function look() {   // -> [the board's state (null: keep the last one), ms until the next look]
+    let raw;
+    try {
+      raw = await askHelper();
+    } catch (e) {   // not running, too slow, or this browser won't let the page reach it
+      // a moment's hiccup while connected keeps what the board shows (and looks again soon); then "not connected"
+      if (CL.st.status === "on" && Date.now() - CL.okAt < GRACE_MS) return [null, 1000];
+      return [{ status: "nohelper" }, 3000];
+    }
+    CL.okAt = Date.now();
+    if (!raw.client) return [{ status: "off", helper: raw.helper }, 3000];
+    let st;
+    try {
+      const res = await engine("POST", "/api/client-parse", "", JSON.stringify(raw), PARSE_MS);
+      st = await res.json();
+      if (!res.ok) throw new Error(st.error || `error ${res.status}`);
+    } catch (e) {
+      return [{ status: "error", error: `couldn't read what the client shows (${e.message})`, helper: raw.helper }, 3000];
+    }
+    st.helper = raw.helper;
+    const ph = st.phase;
+    if (ph === "Matchmaking" && CL.st.phase === "Matchmaking" && CL.st.queue_since) st.queue_since = CL.st.queue_since;   // (a steady queue timer)
+    return [st, st.paused ? 5000 : ph === "ChampSelect" ? 400 : (ph === "Matchmaking" || ph === "ReadyCheck") ? 700
+      : ["GameStart", "InProgress", "Reconnect"].includes(ph) ? 2000 : 1500];
+  }
+  function pollHelper() {   // look now (one look at a time), then again in a moment, for as long as the page is open
+    if (CL.running) return CL.running;
+    clearTimeout(CL.timer);
+    const gen = ++CL.gen;
+    CL.startedAt = Date.now();
+    CL.running = (async () => {
+      let st = null, next = 3000;
+      try {
+        [st, next] = await look();
+      } catch (e) {
+        st = { status: "error", error: `couldn't follow the client (${(e && e.message) || e})` };
+      }
+      if (gen !== CL.gen) return;   // (given up on: a newer look has taken over)
+      CL.running = null;
+      if (st) publish(st);
+      CL.timer = setTimeout(pollHelper, document.visibilityState === "hidden" && CL.st.status !== "on" ? 6000 : next);
+    })();
+    return CL.running;
+  }
+  setInterval(() => {   // the safety net: a look that never ended, or no look for a while, starts a fresh one
+    if (!CL.started) return;
+    const age = Date.now() - CL.startedAt;
+    if (CL.running ? age > ASK_MS + PARSE_MS + 5000 : age > 20000) { CL.running = null; CL.gen += 1; pollHelper(); }
+  }, 5000);
+  const lookSoon = () => { if (CL.started && !CL.running) pollHelper(); };   // (back on the page: fresh at once)
+  document.addEventListener("visibilitychange", () => { if (document.visibilityState === "visible") lookSoon(); });
+  addEventListener("focus", lookSoon);
+  addEventListener("pageshow", lookSoon);
   function startClient() {
     if (!CL.started) { CL.started = true; CL.first = pollHelper(); }
     return CL.first;
@@ -128,6 +183,7 @@
     retry: () => { CL.started = true; return pollHelper(); },
     state: () => CL.st,
     helperUrl: file("league-helper.zip"),
+    helperNewest: HELPER_NEWEST,
   };
 
   // ---- every /api/... request the pages make
