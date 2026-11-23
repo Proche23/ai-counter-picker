@@ -1784,22 +1784,21 @@ function helperOutdated() {   // the website: a League helper older than the new
 function leagueStatus() {   // [state, button label, what to say]
   const st = CL.st || {};
   if (st.status === "on" && st.paused) {
-    return ["paused", "Quiet in game", `Your game is on, so nothing reads League or the game until it ends${st.account ? ` (<b>${esc(st.account)}</b>)` : ""}: the only thing checked is Windows' list of running programs (what Task Manager shows), to see when the game closes. Then it follows your client again by itself.`];
+    return ["paused", "Quiet in game", `Your game is on: nothing is read until it ends${st.account ? ` (<b>${esc(st.account)}</b>)` : ""}.`];
   }
   if (st.status === "on") {
     const where = { Matchmaking: "in queue", ReadyCheck: "match found", ChampSelect: "in champ select", GameStart: "in game",
       InProgress: "in game", Reconnect: "in game" }[st.phase] || "in the client";
     const label = { Matchmaking: "In queue", ReadyCheck: "Match found", ChampSelect: "Champ select", GameStart: "In game",
       InProgress: "In game", Reconnect: "In game" }[st.phase] || "Connected";
-    const intro = `Connected to your League client${st.account ? ` as <b>${esc(st.account)}</b>` : ""}, ${where}.`;
-    if (!S.follow) return ["off", "Follow off", `${intro} <b>Follow is off</b>, so the board doesn't fill itself in (no picks, no live score): switch it on below.`];
-    return ["on", label, `${intro} The board follows it by itself: the queue, bans, picks, your team's hovers, the timer, then the live game.`];
+    const intro = `Connected${st.account ? ` as <b>${esc(st.account)}</b>` : ""} · ${where}.`;
+    if (!S.follow) return ["off", "Follow off", `${intro} Follow is off, so the board doesn't fill itself in.`];
+    return ["on", label, `${intro} The board follows it by itself.`];
   }
   if (st.status === "off") return ["off", "Open League", isWeb()
-    ? "The League helper is running. Open the League client and it connects by itself."
-    : "The League client isn't open. Open it and the board connects by itself."];
-  if (st.status === "nohelper") return ["none", "Connect League",
-    "Not connected. A website can't see programs on your PC by itself, so a small helper passes along what your League client shows."];
+    ? "The helper is running: open League and it connects by itself."
+    : "League isn't open: open it and the board connects by itself."];
+  if (st.status === "nohelper") return ["none", "Connect League", "Not connected: run the small League helper on this PC."];
   if (st.status === "disabled") return ["none", "League", "Following the League client is switched off on this copy of the site (it was started with --no-client)."];
   if (st.status === "server") return ["lost", "League", "Can't reach this site's server: is website.bat still open?"];
   if (st.status === "error") return ["lost", "League", esc(st.error || "Something went wrong.")];
@@ -1834,31 +1833,40 @@ function openLeague() {
   }, 3000);
 }
 function renderLeagueModal() {
-  const [state, , text] = leagueStatus();
+  const [state, label, text] = leagueStatus();
   const old = helperOutdated();
   LG.shown = state + text + S.follow + old;
-  const update = old ? `<p class="lg-upd"><b>A newer League helper is out</b> (${esc(window.acpClient.helperNewest)}; yours is ${esc(CL.st.helper)}).
-      It keeps following your games even if its window gets clicked or the game is slow to answer.
-      <a class="lg-dl" href="${esc(window.acpClient.helperUrl)}" download>Download it</a>, extract it over the old one (right-click, <i>Extract All</i>),
-      then close the old helper's window and double-click <b>Start League Helper.cmd</b> again.</p>` : "";
-  const steps = isWeb() && state === "none" ? `<ol class="lg-steps">
-      <li><a class="lg-dl" href="${esc(window.acpClient?.helperUrl || "league-helper.zip")}" download>Download the League helper</a> (Windows, about 8 KB).
-        So Windows won't ask about it: right-click the zip, <i>Properties</i>, tick <b>Unblock</b> at the bottom, <i>OK</i>.
-        Then right-click it, <i>Extract All</i>. (Started from inside the zip, its window closes at once.)</li>
-      <li>Double-click <b>Start League Helper.cmd</b>. If Windows still asks (it does for any new program from the internet that isn't signed:
-        "Windows protected your PC" or "SmartScreen can't be reached"), click <b>Run</b>, or <i>More info</i> then <i>Run anyway</i>.
-        Keep the small window it opens running while you play.</li>
-      <li>That's all: this button turns teal and the board follows your client by itself. Your browser may ask once whether this site may connect to apps on this device: choose <b>Allow</b>.</li></ol>
-    ${/^(127\.0\.0\.1|localhost)$/.test(location.hostname) ? "" : `<p class="lg-alt">Started it and this still says <i>not connected</i>? Your browser may be stopping this page from reaching apps on your PC. Open the board through the helper instead: <a href="http://127.0.0.1:8799/" target="_blank" rel="noopener"><b>127.0.0.1:8799</b></a> (the same site, and it always connects).</p>`}
-    <p class="muted">The helper only reads, through the same local connection tools like Porofessor and Blitz use, and never clicks, picks or changes anything. It answers only on this PC, and only to this website. It's plain text: open <b>league-helper.ps1</b> in Notepad to read every line.</p>
-    <p class="muted">A website can't see programs on your PC by itself (browsers don't allow it), so something small has to run there. With the full AI Counter Picker on this PC, its own board (<b>website.bat</b>) follows the client with no helper at all.</p>` : "";
-  $("#modalBody").innerHTML = `<div class="lg-panel"><h2><span class="lg-gem big" data-state="${state}" aria-hidden="true"></span>League client</h2>
+  const web = isWeb(), local = /^(127\.0\.0\.1|localhost)$/.test(location.hostname);
+  const dl = (what) => `<button type="button" class="gold lg-dlbtn" data-dl>${what}</button>`;
+  const update = old ? `<div class="lg-upd"><span>Helper ${esc(window.acpClient.helperNewest)} is out (yours: ${esc(CL.st.helper)}). Unzip it over the old one and restart it.</span>${dl("Download")}</div>` : "";
+  const steps = web && state === "none" ? `<ol class="lg-steps">
+      <li>${dl("Download the helper")}</li>
+      <li><span>Unzip it, then double-click <b>Start League Helper.cmd</b></span></li>
+      <li><span>Keep its window open while you play</span></li></ol>
+    <details class="lg-help"><summary>Trouble connecting?</summary><ul>
+      <li><b>Windows asks before it runs:</b> click <i>Run</i>. To stop the question, right-click the zip, <i>Properties</i>, tick <i>Unblock</i>, before unzipping.</li>
+      <li><b>Its window closes at once:</b> unzip it first (right-click, <i>Extract All</i>).</li>
+      ${local ? "" : `<li><b>Helper running, still not connected:</b> your browser blocks sites from reaching your PC. Open <a href="http://127.0.0.1:8799/" target="_blank" rel="noopener">127.0.0.1:8799</a> instead (works only while the helper's window is open).</li>`}
+      <li><b>Safe:</b> it only reads, never clicks or changes anything. With the full app, <b>website.bat</b> needs no helper.</li>
+    </ul></details>` : "";
+  $("#modalBody").innerHTML = `<div class="lg-panel">
+    <h2><span class="lg-gem big" data-state="${state}" aria-hidden="true"></span>League client<span class="lg-pill" data-state="${state}">${esc(
+      state === "none" || state === "lost" ? "Not connected" : label === "Open League" ? "League closed" : label)}</span></h2>
     <p class="lg-now">${text}</p>${steps}${update}
-    <div class="lg-row"><label class="chk"><input type="checkbox" id="lgFollow"${S.follow ? " checked" : ""}> Follow the client: the board fills itself in</label>
-      ${isWeb() && CL.st?.status !== "on" ? '<button type="button" id="lgRetry">Check again</button>' : ""}</div>
-    <div class="lg-row lg-quiet"><label class="chk"><input type="checkbox" id="lgQuiet"${quietInGame() ? " checked" : ""}> Quiet during games <span class="muted">(optional)</span></label>
-      <span class="muted">${quietInGame() ? "While your game runs, nothing reads League or the game; it picks up again by itself when the game ends. (The live score isn't filled in by itself: type it in if you want it.)"
-        : "Off: during games the live score is read from the game (Riot's official live-game data) and the win chance updates in real time."}</span></div></div>`;
+    <div class="lg-controls">
+      <label class="lg-switch" title="The board fills itself in from your League client: queue, bans, picks, hovers, the timer, then the live score">
+        <span>Follow the client</span><input type="checkbox" id="lgFollow"${S.follow ? " checked" : ""}></label>
+      <label class="lg-switch" title="${esc(quietInGame() ? "On: while your game runs nothing is read (no live score); it picks up again when the game ends"
+        : "Off: during games the live score is read in real time. On: nothing is read while you play")}">
+        <span>Quiet during games</span><input type="checkbox" id="lgQuiet"${quietInGame() ? " checked" : ""}></label>
+      ${web && CL.st?.status !== "on" ? '<div class="lg-actions"><button type="button" id="lgRetry">Check again</button></div>' : ""}
+    </div></div>`;
+  $("#modalBody").querySelectorAll("button[data-dl]").forEach((b) => b.addEventListener("click", () => {   // (a download link, as a button)
+    const a = Object.assign(document.createElement("a"), { href: window.acpClient?.helperUrl || "league-helper.zip", download: "league-helper.zip" });
+    document.body.append(a);
+    a.click();
+    a.remove();
+  }));
   $("#lgFollow").onchange = (e) => { $("#followOn").checked = e.target.checked; $("#followOn").dispatchEvent(new Event("change")); };
   $("#lgRetry")?.addEventListener("click", () => { window.acpClient?.retry(); toast("Looking for the League helper…"); });
   $("#lgQuiet").onchange = (e) => {
