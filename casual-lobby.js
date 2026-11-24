@@ -6,7 +6,7 @@ function casualQueue(st) {
   if (/mayhem/i.test(name) || id === 2400) return "Mayhem";
   if (/urf/i.test(name) || [900,1900].includes(id)) return "URF";
   if (/aram/i.test(name) || [450,720].includes(id)) return "ARAM";
-  const teams = st.champ_select?.picks || st.game?.champs || {};
+  const teams = st.game?.champs || st.champ_select?.picks || {};
   return Object.values(teams).some(team => team.length > 5) ? "Other" : "";
 }
 const arenaPairs = [
@@ -23,7 +23,7 @@ function showCasualLobby(st, mode) {
   const allies = cs?.picks?.[cs.side] || [];
   const partner = allies.length === 2 ? allies.find(p => !p.me) : null;
   const auto = partner?.champ || partner?.hover || "";
-  const own = cs?.me?.champ || cs?.me?.hover || st.game?.me || "";
+  const own = st.game?.me || cs?.me?.champ || cs?.me?.hover || "";
   const blocked = [...(cs?.bans?.B || []), ...(cs?.bans?.R || [])];
   const key = JSON.stringify([mode,cs?.key,auto,own,blocked]);
   box.hidden = false;
@@ -34,6 +34,11 @@ function showCasualLobby(st, mode) {
   box.innerHTML = '<h2></h2><div class="arena-controls"></div><div class="arena-results"></div><a>Open casual mode guide ↗</a>';
   box.querySelector("h2").textContent = mode + " lobby";
   box.querySelector("a").href = "casual.html?mode=" + encodeURIComponent(mode);
+  if (own) {
+    const champion = document.createElement("p");
+    champion.textContent = (st.game ? "Playing " : "Your champion: ") + own;
+    box.querySelector("h2").after(champion);
+  }
   if (mode !== "Arena") return;
   box.querySelector(".arena-controls").innerHTML = '<label>Duo partner <input list="arenaChampions" placeholder="Choose or type a champion"></label><datalist id="arenaChampions"></datalist>';
   const input = box.querySelector("input");

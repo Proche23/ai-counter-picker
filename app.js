@@ -86,6 +86,13 @@ function loadState() {
     if (!s || !Array.isArray(s.blue)) return null;
     const d = freshState(s);   // a draft saved by an older version: fill in settings added since
     for (const k of Object.keys(d)) if (s[k] === undefined) s[k] = d[k];
+    if (!Array.isArray(s.red)) s.red = [];
+    for (const side of ["blue", "red"]) {
+      if (s[side].length > 5) {
+        s[side] = s[side].slice(0, 5);
+        s.history = [];
+      }
+    }
     if (!Array.isArray(s.poolOff)) s.poolOff = [];
     if (s.mode === "solo") s.solo = !!s.proSolo;   // (saved on the old Solo queue tab: the switch as it was on the board)
     s.mode = location.hash === "#stats" ? "stats" : "pro";   // the board, unless the link says My Stats
@@ -594,6 +601,7 @@ function lock(name, role = null, fromRec = false) {
     }
     (side === "B" ? S.blueBans : S.redBans).push(name);
   } else {
+    if ((side === "B" ? S.blue : S.red).length >= 5) return toast("That team already has five champions.");
     const pick = { champ: name, role };
     // solo queue: on your turn the pick is yours (typed picks count only when you've set your pick number)
     if (S.solo && RES.solo_turn === "me" && (S.slot || fromRec)) Object.assign(pick, { role: S.myRole, me: true });
@@ -1701,10 +1709,10 @@ function applyClient(st, force = false) {
   const mode = S.follow && st.status === "on" && casualQueue(st);
   showCasualLobby(st, mode);
   if (mode) return;
-  if (!RES) return;
-  if (S.follow && CL.cs) return followDraft(CL.cs, force);
+  if (RES && S.follow && CL.cs) return followDraft(CL.cs, force);
   clearTurn();
   if (S.follow && CL.game && followGame(CL.game)) return;
+  if (!RES) return;
   renderStart(); renderPhase(); renderTeams(); renderRecs();
   applyLiveCard();
 }
@@ -1799,19 +1807,38 @@ function checkRoles(want) {   // once a game starts: the roles the game itself r
 function followGame(g) {   // a game running in your client: make sure its 10 champions are on the board
   const want = { B: g.champs.B.filter((c) => BY_NAME[c.champ]), R: g.champs.R.filter((c) => BY_NAME[c.champ]) };
   if (want.B.length !== 5 || want.R.length !== 5) return false;
-  const have = new Set([...S.blue, ...S.red].map((p) => p.champ));
-  if ([...want.B, ...want.R].every((c) => have.has(c.champ))) return checkRoles(want);   // already there (followed from champ select)
+  const sameTeam = (side, picks) => picks.length === want[side].length &&
+    want[side].every((c) => picks.some((p) => p.champ === c.champ));
+  const mine = (c, side) => !!g.me && c.champ === g.me && (!g.my_side || side === g.my_side);
+  const me = (g.my_side ? want[g.my_side] : [...want.B, ...want.R]).find((c) => c.champ === g.me);
+  if (RES && sameTeam("B", S.blue) && sameTeam("R", S.red)) {
+    let changed = false;
+    if (g.my_side && S.us !== g.my_side) { S.us = g.my_side; changed = true; }
+    if (me?.role && S.myRole !== me.role) { S.myRole = me.role; changed = true; }
+    if (g.me) {
+      for (const [side, picks] of [["B", S.blue], ["R", S.red]]) {
+        for (const pick of picks) {
+          const isMine = mine(pick, side);
+          if (!!pick.me === isMine) continue;
+          pick.me = isMine;
+          S.myChamp = null;
+          changed = true;
+        }
+      }
+    }
+    if (checkRoles(want)) return true;
+    if (changed) { saveState(); refresh(); return true; }
+    return false;
+  }
   const had = S.blue.length + S.red.length + S.blueBans.length + S.redBans.length;
   CLEARED = had ? JSON.parse(JSON.stringify(S)) : null;
   SWAP = null;
   S = freshState(S);
-  const mine = (c) => c.champ === g.me;
-  const me = [...want.B, ...want.R].find(mine);
   Object.assign(S, {
     solo: true, loaded: true, sideChosen: true, us: g.my_side || S.us || "B", clientKey: `game-${Date.now()}`, myChamp: null,
     myRole: me?.role || S.myRole || POOL?.main_role || "MID",
-    blue: want.B.map((c) => ({ champ: c.champ, role: c.role || null, ...(mine(c) ? { me: true } : {}) })),
-    red: want.R.map((c) => ({ champ: c.champ, role: c.role || null, ...(mine(c) ? { me: true } : {}) })),
+    blue: want.B.map((c) => ({ champ: c.champ, role: c.role || null, ...(mine(c, "B") ? { me: true } : {}) })),
+    red: want.R.map((c) => ({ champ: c.champ, role: c.role || null, ...(mine(c, "R") ? { me: true } : {}) })),
   });
   toast("Your game is running: its 10 champions are on the board, and the live score follows the game");
   saveState();
