@@ -5,6 +5,7 @@ const challenges = {
   URF: ["Land the same skillshot twice in one fight.", "Coordinate a cannon landing with a teammate and escape together.", "Chain a mobility spell into a teammate’s crowd control.", "Use your short cooldowns to save an ally twice in one fight."],
   Other: ["Let a teammate choose your champion from two you enjoy.", "Set up an elimination for a different teammate in each fight.", "Call a retreat together and get everyone out.", "Trade jobs for one fight: have a different teammate call the engage."]
 };
+challenges.Mayhem = challenges.ARAM;
 const sessions = new Map();
 let mode = "ARAM";
 function session() {
@@ -18,7 +19,7 @@ function draw() {
   document.querySelector("#done").disabled = s.done;
   document.querySelector("#score").textContent = s.count + " completed in this mode this session";
 }
-document.querySelector("fieldset").onchange = event => { mode = event.target.value; draw(); };
+document.querySelector("fieldset").onchange = event => { mode = event.target.value; draw(); showPicks(); };
 document.querySelector("#roll").onclick = () => {
   const s = session(), size = challenges[mode].length;
   s.index = (s.index + 1 + Math.floor(Math.random()*(size-1))) % size;
@@ -32,3 +33,58 @@ document.querySelector("#done").onclick = () => {
   draw();
 };
 draw();
+
+const guides = {
+  Arena: [
+    ["Xin Zhao", "Start here for melee pressure. Renata Glasc can keep you fighting through your first dive. Zilean is another strong partner.", "Silver: Deft · Gold: Twice Thrice · Prismatic: Dual Wield", "https://arenasweats.lol/pages/champions/xin-zhao/"],
+    ["Swain", "Pair with Seraphine. Pull the target into her crowd control and keep them inside your ultimate.", "Gold: Phenomenal Evil · Prismatic: Infernal Conduit", "https://arenasweats.lol/pages/champions/swain/"],
+    ["Brand", "Pair with Shyvana for a frontline that draws enemies together before you cast your ultimate.", "Gold: Magic Missile · Prismatic: Infernal Conduit", "https://arenasweats.lol/pages/champions/brand/"],
+    ["Jinx", "Pick with Lulu or Renata Glasc when your duo wants a protected ranged carry.", "Silver: Deft · Gold: Critical Rhythm · Prismatic: Dual Wield", "https://arenasweats.lol/pages/champions/jinx/"]
+  ],
+  ARAM: [
+    ["Sona", "Take her when your bench offers sustain and your team already has damage. Pair with Jinx: shield her during poke, then save Crescendo for divers.", "", "https://u.gg/lol/champions/aram/Sona-aram"],
+    ["Malphite", "Take him when your team needs a fight starter. With Miss Fortune, catch a group in Unstoppable Force as she channels Bullet Time.", "", ""],
+    ["Miss Fortune", "Take her behind reliable area control. Wait for Malphite or Amumu to pin enemies before channeling your ultimate.", "", ""]
+  ],
+  Mayhem: [
+    ["Sona", "Choose sustain for a team that fights grouped. Stand near your carry and keep shields cycling.", "Silver: Blue Barrier · Gold: Shrink Engine · Prismatic: Windspeaker’s Blessing", "https://u.gg/lol/champions/aram-mayhem/Sona-aram-mayhem"],
+    ["Brand", "Choose area damage alongside Amumu. Spread Blaze while enemies are held together.", "Look for Magic Missile when offered.", "https://u.gg/lol/champions/aram-mayhem/brand-aram-mayhem"]
+  ],
+  URF: [
+    ["Hecarim", "Pair with Zilean. Take his speed boost into a flank and use the revive to survive the counterattack.", "", ""],
+    ["Leona", "Pair with Lucian. Chain your stuns so he can dash in and repeatedly trigger his passive.", "", ""]
+  ]
+};
+const notes = {
+  Arena: "Patch 26.23 snapshot. Xin Zhao is the first pick on this shortlist. Select a champion for partner and augment priorities.",
+  ARAM: "Choose from your roll or bench. Sona was S tier on U.GG in patch 26.23. The other picks are suggested teamfight combos.",
+  Mayhem: "Patch 26.23 augment shortlist. Pick for the job your team needs, then look for these offers.",
+  URF: "Suggested ability combos. Current patch win-rate data was unavailable."
+};
+const champion = document.querySelector("#champion");
+function showAdvice() {
+  const [name, combo, augments, source] = guides[mode][champion.selectedIndex];
+  const box = document.querySelector("#advice");
+  box.replaceChildren();
+  for (const line of [combo, augments && "Augments · " + augments].filter(Boolean)) {
+    const p = document.createElement("p");
+    p.textContent = line;
+    box.append(p);
+  }
+  if (source) {
+    const link = document.createElement("a");
+    link.href = source;
+    link.textContent = name + " mode data ↗";
+    box.append(link);
+  }
+}
+function showPicks() {
+  const picks = guides[mode];
+  document.querySelector("#scout").hidden = !picks;
+  if (!picks) return;
+  document.querySelector("#pickNote").textContent = notes[mode];
+  champion.replaceChildren(...picks.map(([name]) => new Option(name)));
+  showAdvice();
+}
+champion.onchange = showAdvice;
+showPicks();
