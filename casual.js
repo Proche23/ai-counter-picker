@@ -36,13 +36,13 @@ draw();
 
 const guides = {
   ARAM: [
-    ["Sona", "Take her when your bench offers sustain and your team already has damage. Pair with Jinx: shield her during poke, then save Crescendo for divers.", "", "https://u.gg/lol/champions/aram/Sona-aram"],
+    ["Sona", "Take her when your bench offers sustain and your team already has damage. Pair with Jinx: shield her during poke, then save Crescendo for divers.", ""],
     ["Malphite", "Take him when your team needs a fight starter. With Miss Fortune, catch a group in Unstoppable Force as she channels Bullet Time.", "", ""],
     ["Miss Fortune", "Take her behind reliable area control. Wait for Malphite or Amumu to pin enemies before channeling your ultimate.", "", ""]
   ],
   Mayhem: [
-    ["Sona", "Choose sustain for a team that fights grouped. Stand near your carry and keep shields cycling.", "Silver: Blue Barrier · Gold: Shrink Engine · Prismatic: Windspeaker’s Blessing", "https://u.gg/lol/champions/aram-mayhem/Sona-aram-mayhem"],
-    ["Brand", "Choose area damage alongside Amumu. Spread Blaze while enemies are held together.", "Look for Magic Missile when offered.", "https://u.gg/lol/champions/aram-mayhem/brand-aram-mayhem"]
+    ["Sona", "Choose sustain for a team that fights grouped. Stand near your carry and keep shields cycling.", "Silver: Blue Barrier · Gold: Shrink Engine · Prismatic: Windspeaker’s Blessing"],
+    ["Brand", "Choose area damage alongside Amumu. Spread Blaze while enemies are held together.", "Look for Magic Missile when offered."]
   ],
   URF: [
     ["Hecarim", "Pair with Zilean. Take his speed boost into a flank and use the revive to survive the counterattack.", "", ""],
@@ -50,25 +50,19 @@ const guides = {
   ]
 };
 const notes = {
-  ARAM: "Choose from your roll or bench. Sona was S tier on U.GG in patch 26.23. The other picks are suggested teamfight combos.",
+  ARAM: "Choose from your roll or bench based on the teamfight combo you need.",
   Mayhem: "Patch 26.23 augment shortlist. Pick for the job your team needs, then look for these offers.",
   URF: "Suggested ability combos. Current patch win-rate data was unavailable."
 };
 const champion = document.querySelector("#champion");
 function showAdvice() {
-  const [name, combo, augments, source] = guides[mode][champion.selectedIndex];
+  const [, combo, augments] = guides[mode][champion.selectedIndex];
   const box = document.querySelector("#advice");
   box.replaceChildren();
   for (const line of [combo, augments && "Augments · " + augments].filter(Boolean)) {
     const p = document.createElement("p");
     p.textContent = line;
     box.append(p);
-  }
-  if (source) {
-    const link = document.createElement("a");
-    link.href = source;
-    link.textContent = name + " mode data ↗";
-    box.append(link);
   }
 }
 function showPicks() {
