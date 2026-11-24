@@ -108,7 +108,7 @@ a:has(> button) { display: inline-flex; text-decoration: none; }
 header.top {
   display: flex; align-items: center; gap: 18px; padding: 0 20px; min-height: 58px;
   border-bottom: 1px solid rgba(var(--accent-dk-rgb), .35);
-  background: linear-gradient(180deg, rgba(var(--bg0-rgb), 0.97), rgba(var(--bg1-rgb), 0.93));
+  background: linear-gradient(180deg, rgba(var(--bg0-rgb), .74), rgba(var(--bg1-rgb), .66));
   position: sticky; top: 0; z-index: 20;
 }
 /* a gold filigree line under the header, brightest in the middle, with a diamond set in it */
@@ -2243,26 +2243,9 @@ html.art-out :is(.live-card, #planCard)::before { opacity: 0; }
 .region-guide p { max-width: 70ch; }
 .region-guide .crest { width: 24px; height: 24px; }
 
-/* Expose a strip of landscape even when the draft panels fill the window. */
-.region-vista {
-  height: clamp(84px, 13vw, 180px);
-  border-bottom: 1px solid var(--accent-dk);
-  position: relative; background: var(--bg0);
-}
-.region-vista::before, .region-vista::after {
-  content: ""; position: absolute; inset: 0; pointer-events: none; transition: opacity var(--art-fade) ease-in-out;
-  background: linear-gradient(0deg, var(--bg0), transparent 35%),
-    linear-gradient(100deg, rgba(var(--bg0-rgb), .52), transparent 60%),
-    var(--art) center 28% / cover;
-}
 body { isolation: isolate; }
-@media (max-height: 640px) { .region-vista { height: 60px; } }
-
-.region-vista::after { --art: var(--panel-next-art,none); opacity: 0; }
-html.art-out .region-vista::after { opacity: 1; }
-/* The alternate layer completely covers the base while the base image changes. */
 @media (prefers-reduced-motion: reduce) {
-  .region-vista::after,
+
   :is(.live-card,#planCard)::before, :is(.live-card,#planCard)::after { transition-duration: var(--art-fade) !important; }
 }
 /* Lower the base only after the incoming artwork covers it. */
