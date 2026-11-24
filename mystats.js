@@ -5,7 +5,7 @@
    app.js opens it (ACPMyStats.open) and closes it when you go back to the board. */
 (() => {
   const ROLE_NAME = { TOP: "Top", JNG: "Jungle", MID: "Mid", BOT: "Bot", SUP: "Support" };
-  const QUEUES = [["ranked", "Ranked Solo/Duo"], ["flex", "Ranked Flex"], ["draft", "Normal Draft"], ["all", "All games"]];
+  const QUEUES = [["ranked", "Ranked Solo/Duo"], ["flex", "Ranked Flex"], ["draft", "Normal Draft"], ["all", "All Rift games"]];
   const COUNTS = [20, 50];
   const PREF = "acp-mystats-prefs";
   const load_ = () => { try { return JSON.parse(localStorage.getItem(PREF) || "{}") || {}; } catch (e) { return {}; } };
@@ -61,26 +61,30 @@
   // ---- loading
   async function load(fresh = false) {
     const seq = ++st.seq;
+    const { queue, count, role } = st;
+    if (st.res && (st.res.queue !== queue || st.res.count !== count || (role && st.res.role !== role))) st.res = null;
+    st.error = null;
     st.loading = true;
     render();
-    const q = new URLSearchParams({ queue: st.queue, count: String(st.count) });
-    if (st.role) q.set("role", st.role);
+    const q = new URLSearchParams({ queue, count: String(count) });
+    if (role) q.set("role", role);
     if (fresh) q.set("fresh", "1");
     let r = null, data = {};
     try {
       r = await fetch(`/api/mystats?${q}`, { cache: "no-store" });
-      data = await r.json().catch(() => ({}));
+      data = (await r.json().catch(() => null)) || {};
     } catch (e) {
       data = { error: `Couldn't load your stats (${e.message || e}).` };
     }
     if (seq !== st.seq) return;   // (a newer look-up took over)
     st.loading = false;
-    if (r?.ok && data.groups) {
+    if (r?.ok && data.groups && data.queue === queue && data.count === count) {
       st.res = data;
       st.error = null;
     } else {
-      st.error = data && data.error ? data : { error: `Couldn't load your stats (error ${r?.status ?? "?"}).` };
-      if (st.res && st.res.queue !== st.queue) st.res = null;   // (another queue's games would mislead)
+      if (data.empty) st.res = null;
+      st.error = data.error ? data : { error: r?.ok ? "The response didn't match this selection. Try Refresh."
+        : `Couldn't load your stats (error ${r?.status ?? "?"}).` };
     }
     render();
   }
@@ -99,8 +103,8 @@
   function status() {
     const r = st.res, e = st.error;
     if (st.loading) {
-      return `<div class="ms-status"><i class="spin-inline" aria-hidden="true"></i>${web()
-        ? "Asking the League helper for your games (about 10 seconds the first time)…" : "Reading your games from your League client…"}</div>`;
+      const queue = QUEUES.find(([id]) => id === st.queue)[1];
+      return `<div class="ms-status" role="status"><i class="spin-inline" aria-hidden="true"></i>Loading ${esc(queue)} from League…</div>`;
     }
     if (e) {
       const why = esc(e.error || "Something went wrong.");
@@ -215,7 +219,7 @@
   function games(r) {
     if (!r.recent?.length) return "";
     const head = "<tr><th>Date</th><th>Champion</th><th>Result</th><th>K / D / A</th><th>CS / min</th><th>Gold lead @15</th><th>Damage / min</th><th>Vision / min</th><th>Kill part.</th><th>Length</th></tr>";
-    const rows = r.recent.map((g) => `<tr><td>${esc(day(g.date))}</td>
+    const rows = r.recent.map((g) => `<tr><td>${esc(day(g.date))}${g.queue ? `<div class="muted">${esc(g.queue)}</div>` : ""}</td>
       <td><span class="ms-ch">${img(g.champ)}<span>${esc(g.champ)}${g.opp ? `<small class="muted">vs ${esc(g.opp)}</small>` : ""}</span></span></td>
       <td class="${g.win ? "ms-win" : "ms-loss"}">${g.win ? "Win" : "Loss"}</td><td>${g.k} / ${g.d} / ${g.a}</td>
       <td>${fmt(g.cspm, "f1")}</td><td>${fmt(g.gd15, "sgn0")}</td><td>${fmt(g.dpm, "f0")}</td><td>${fmt(g.vspm, "f2")}</td><td>${fmt(g.kp, "pct")}</td>
@@ -235,7 +239,7 @@
   }
 
   function emptyState() {
-    if (st.loading) return `<div class="card ms-empty"><i class="spin-inline" aria-hidden="true"></i> One moment…</div>`;
+    if (st.loading) return "";
     const e = st.error;
     const pcText = "My Stats reads your last games from your League client's match history. Open League, sign in and press Refresh: no Riot key needed.";
     const webText = "My Stats reads your last games from your League client through the League helper (the same small program that lets the board follow champ select). Start it, open League, then press Refresh.";

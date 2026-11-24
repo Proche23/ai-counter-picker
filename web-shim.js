@@ -6,7 +6,7 @@
    browser. Following the League client, phone mode, the tracker window and Riot look-ups need the PC. */
 (() => {
   const realFetch = window.fetch.bind(window);
-  const V = "8178655476";   // (build_web.py: this build's stamp, so a browser never mixes files from two builds)
+  const V = "c5007b0620";   // (build_web.py: this build's stamp, so a browser never mixes files from two builds)
   const BASE = new URL(".", document.currentScript?.src || location.href);   // where the site's files are
   const file = (p) => `${new URL(p, BASE).href}?v=${V}`;
   const STATIC = { "/api/meta": "data/meta.json", "/api/lab": "data/lab.json", "/api/lab_games": "data/lab_games.json" };
@@ -190,7 +190,7 @@
   // here. Your last look-up stays in this browser, so the tab still shows it while League is closed.
   const MS_NEED = "1.6";   // (the first helper that can read the match history)
   const MS_KEY = "acp-mystats-v1";
-  const MS = { state: null, at: 0, chain: Promise.resolve() };
+  const MS = { queues: new Map(), chain: Promise.resolve() };
   const QUEUE_IDS = { ranked: [420], flex: [440], draft: [400], all: [400, 420, 430, 440, 480, 490, 700] };
   const msSaved = () => { try { return JSON.parse(localStorage.getItem(MS_KEY) || "null"); } catch (e) { return null; } };
   const msSave = (s) => { try { localStorage.setItem(MS_KEY, JSON.stringify(s)); } catch (e) { /* full, or a private window */ } };
@@ -243,14 +243,16 @@
     }
     const ranked = await helperGet("/ranked").catch(() => null);
     const want = QUEUE_IDS[queue] || QUEUE_IDS.ranked;
-    const hist = [];
-    for (let page = 0; page < 5; page++) {
-      const h = await helperGet(`/history?beg=${page * 20}&end=${page * 20 + 19}`);
+    const hist = new Map();
+    for (let page = 0, beg = 0; page < 5; page++) {
+      const h = await helperGet(`/history?beg=${beg}&end=${beg + 19}`);
       const chunk = h?.data?.games?.games || [];
-      hist.push(...chunk);
-      if (chunk.length < 20 || hist.filter((g) => want.includes(g.queueId)).length >= count) break;
+      const before = hist.size;
+      for (const g of chunk) hist.set(g.gameId, g);
+      if (hist.size === before || [...hist.values()].filter((g) => want.includes(Number(g.queueId))).length >= count) break;
+      beg += chunk.length;
     }
-    const mine = hist.filter((g) => want.includes(g.queueId)).sort((a, b) => (b.gameCreation || 0) - (a.gameCreation || 0)).slice(0, count);
+    const mine = [...hist.values()].filter((g) => want.includes(Number(g.queueId))).sort((a, b) => (b.gameCreation || 0) - (a.gameCreation || 0)).slice(0, count);
     const games = {}, timelines = {};
     for (const g of mine) {   // (one at a time: the helper answers one thing at a time, and the board still needs it too)
       const id = String(g.gameId);
@@ -268,21 +270,21 @@
     const count = Math.max(5, Math.min(Number(params.get("count")) || 20, 50));
     const role = params.get("role") || "";
     const fresh = params.get("fresh") === "1";
-    if (!MS.state) MS.state = msSaved();
-    let st = MS.state && MS.state.queue === queue ? MS.state : null;
+    const cached = MS.queues.get(queue);
+    const saved = cached ? null : msSaved();
+    let st = cached?.state || (saved?.queue === queue ? saved : null);
     let stale = false, why = "";
-    if (!(st && (st.count || 0) >= count && !fresh && Date.now() - MS.at < 300000)) {
+    if (!(cached && st.count >= count && !fresh && Date.now() - cached.at < 300000)) {
       try {
         const raw = await readClient(queue, count);
         const res = await engine("POST", "/api/mystats-parse", "", JSON.stringify({ raw, queue, count, fetched: new Date().toISOString() }), 120000);
         const body = await res.json();
         if (!res.ok) {
-          if (body.empty) return json(body, 404);
+          if (body.empty) { MS.queues.delete(queue); return json(body, 404); }
           throw Object.assign(new Error(body.error || `error ${res.status}`), { status: res.status, body });
         }
         st = body;
-        MS.state = st;
-        MS.at = Date.now();
+        MS.queues.set(queue, { state: st, at: Date.now() });
         msSave(st);
       } catch (e) {
         const body = e.body || { error: `Couldn't read your games through the League helper (${e.message || e}): is it still running?`, no_helper: true };
