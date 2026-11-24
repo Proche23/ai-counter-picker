@@ -192,7 +192,7 @@
   // sight. It rests while the page is hidden (another tab, a minimised window) and with data saver on.
   // (A slow fade has no movement in it, so it stays on with "reduce motion" too: a fade is what that
   // setting swaps movement for.)
-  const ART_EVERY_MS = 7000, ART_FADE_MS = 1500;   // (a new champion every 7 s, 1.5 s of it the fade)
+  const ART_EVERY_MS = 7000, ART_FADE_MS = 2800;   // (a new champion every 7 s, 2.8 s of it the fade)
   root.style.setProperty("--art-fade", `${ART_FADE_MS}ms`);   // (the stylesheet's fades take this long too)
   let artTimer = 0, artIdx = 0, artLayer = null, artOnLayer = false, artFadeEnd = 0;
   let artRun = 0;   // (a new theme, or a newer turn, retires a turn that's still getting its picture ready)
