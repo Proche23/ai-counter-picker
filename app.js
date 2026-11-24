@@ -45,6 +45,7 @@ let SHARED = null;   // a draft opened from a link (#d=...), applied once the ch
 let RES = null;
 let LAST_P = 0.5;
 let roleFilter = "ALL";
+let lastPersonalRole = "";
 let sugg = [], suggIdx = 0;
 let busy = false, pending = false;
 const queue = [];  // locks typed while the server is still answering are applied in order
@@ -1161,8 +1162,26 @@ function renderGrid() {
   const q = key($("#champInput").value);
   const u = used();
   const hot = new Set([...(RES?.recs || []), ...(RES?.bans || [])].map((x) => x.champ));
+  const personalRole = S.solo && ROLES.includes(S.myRole) ? S.myRole : "";
+  if (personalRole !== lastPersonalRole) {
+    roleFilter = personalRole || "ALL";
+    lastPersonalRole = personalRole;
+  }
+  const tabs = $("#roleTabs");
+  const order = personalRole ? [personalRole, "ALL", ...ROLES.filter(r => r !== personalRole)] : ["ALL", ...ROLES];
+  order.forEach((role, index) => {
+    const button = tabs.querySelector('[data-role="' + role + '"]');
+    if (!button) return;
+    if (tabs.children[index] !== button) tabs.insertBefore(button, tabs.children[index] || null);
+    button.textContent = role === personalRole ? "Your role · " + ROLE_NAME[role] : ROLE_NAME[role] || "All";
+    button.setAttribute("aria-pressed", String(roleFilter === role));
+  });
   const list = CHAMPS.filter((c) => (roleFilter === "ALL" || c.roles.includes(roleFilter))
     && (!q || key(c.name).includes(q) || Object.entries(ALIAS).some(([a, n]) => n === c.name && key(a).startsWith(q))));
+  if (personalRole && roleFilter === personalRole && RES?.solo_turn === "me" && RES.next?.action === "pick") {
+    const ranks = new Map((RES.recs || []).map((rec, i) => [rec.champ, i]));
+    list.sort((a, b) => (ranks.get(a.name) ?? Infinity) - (ranks.get(b.name) ?? Infinity));
+  }
   $("#grid").innerHTML = list.map((c) => `<div class="cell ${u.has(c.name) ? "used" : ""} ${hot.has(c.name) ? "hot" : ""}"
       data-name="${esc(c.name)}" title="${esc(c.name)} · ${c.roles.map((r) => ROLE_NAME[r]).join("/") || "no pro games"} · ${pct(c.presence)} presence">
       ${c.presence >= 0.25 ? `<span class="pres">${pct(c.presence)}</span>` : ""}${c.games ? '<span class="info" title="Pro profile (or right-click)">i</span>' : ""}

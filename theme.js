@@ -335,6 +335,13 @@
   function closePicker() { box?.classList.remove("open"); }
 
   function wire() {
+    const header = document.querySelector("header");
+    if (header) {
+      const vista = document.createElement("div");
+      vista.className = "region-vista";
+      vista.setAttribute("aria-hidden", "true");
+      header.after(vista);
+    }
     document.querySelectorAll("[data-theme-btn]").forEach((b) => { paintButton(b); b.addEventListener("click", openPicker); });
     fetch("/api/prefs", { cache: "no-store" }).then((r) => (r.ok ? r.json() : null)).then((p) => fromServer(p)).catch(() => {});
   }

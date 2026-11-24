@@ -2261,3 +2261,14 @@ button:not(:disabled):not(.th-tile):not(.linkish):not(.cell):hover::before { opa
 .region-guide h3 { color: var(--accent-hi); margin: 0; display: flex; align-items: center; gap: .5rem; }
 .region-guide p { max-width: 70ch; }
 .region-guide .crest { width: 24px; height: 24px; }
+
+/* Expose a strip of landscape even when the draft panels fill the window. */
+.region-vista {
+  height: clamp(84px, 13vw, 180px);
+  border-bottom: 1px solid var(--accent-dk);
+  background: linear-gradient(0deg, var(--bg0), transparent 35%),
+    linear-gradient(100deg, rgba(var(--bg0-rgb), .52), transparent 60%),
+    var(--button-art, var(--art)) center 28% / cover;
+}
+body { isolation: isolate; }
+@media (max-height: 640px) { .region-vista { height: 60px; } }
