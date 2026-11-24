@@ -2200,13 +2200,13 @@ body.mode-stats #nextGameBtn, body.mode-stats header.top .actions > .sep { displ
 h3 .lv-odds { margin: 0 0 0 8px; }
 
 /* Keep the region artwork close to the controls and predictions it frames. */
-body::before, .art-fade { visibility: hidden; }
-.actions, .live-card, #planCard {
+
+.live-card, #planCard {
   position: relative;
   isolation: isolate;
 }
-:is(.actions, .live-card, #planCard)::before,
-:is(.actions, .live-card, #planCard)::after {
+:is(.live-card, #planCard)::before,
+:is(.live-card, #planCard)::after {
   content: "";
   position: absolute;
   inset: -16px;
@@ -2219,16 +2219,16 @@ body::before, .art-fade { visibility: hidden; }
   opacity: .85;
   transition: opacity var(--art-fade, 1.5s) linear;
 }
-:is(.actions, .live-card, #planCard)::after {
+:is(.live-card, #planCard)::after {
   --art: var(--panel-next-art, none);
   --art-pos: var(--panel-next-pos, center 20%);
   opacity: 0;
 }
-html.art-out :is(.actions, .live-card, #planCard)::after { opacity: .85; }
-html.art-out :is(.actions, .live-card, #planCard)::before { opacity: 0; }
+html.art-out :is(.live-card, #planCard)::after { opacity: .85; }
+html.art-out :is(.live-card, #planCard)::before { opacity: 0; }
 @media (prefers-reduced-motion: no-preference) {
-  :is(.actions, .live-card, #planCard)::before,
-  :is(.actions, .live-card, #planCard)::after {
+  :is(.live-card, #planCard)::before,
+  :is(.live-card, #planCard)::after {
     animation: region-art-drift 7s linear infinite alternate;
   }
   @keyframes region-art-drift {
@@ -2237,22 +2237,6 @@ html.art-out :is(.actions, .live-card, #planCard)::before { opacity: 0; }
   }
 }
 
-/* The upper-right toolbar uses the theme's native button surfaces. */
-.actions::before, .actions::after { display: none; }
-body::before, .art-fade { visibility: visible; }
-button:not(.actions button,.th-tile,.linkish,.cell,:disabled)::before,
-button:not(.actions button,.th-tile,.linkish,.cell,:disabled)::after {
-  content: ""; display: block; position: absolute; inset: 0; z-index: -1;
-  pointer-events: none; border: 0; box-shadow: none;
-  background: linear-gradient(90deg, rgba(3,8,16,.64), rgba(3,8,16,.24)), var(--art) center 28% / cover;
-  opacity: .76; transition: opacity var(--art-fade) ease-in-out;
-}
-button:not(.actions button,.th-tile,.linkish,.cell,:disabled)::after {
-  background-image: linear-gradient(90deg, rgba(3,8,16,.64), rgba(3,8,16,.24)), var(--panel-next-art,none);
-  opacity: 0;
-}
-html.art-out button:not(.actions button,.th-tile,.linkish,.cell,:disabled)::before { opacity: 0; }
-html.art-out button:not(.actions button,.th-tile,.linkish,.cell,:disabled)::after { opacity: .76; }
 .region-guide { padding: 1rem; border-left: 3px solid var(--accent); margin: 1rem 0;
   background: linear-gradient(90deg,rgba(4,9,18,.95),rgba(4,9,18,.67)),var(--guide-art) center 24% / cover; color: #faf7ef; }
 .region-guide h3 { color: var(--accent-hi); margin: 0; display: flex; align-items: center; gap: .5rem; }
@@ -2278,7 +2262,10 @@ body { isolation: isolate; }
 html.art-out .region-vista::after { opacity: 1; }
 /* The alternate layer completely covers the base while the base image changes. */
 @media (prefers-reduced-motion: reduce) {
-  .region-vista::after, button:not(.actions button,.th-tile,.linkish,.cell,:disabled)::before,
-  button:not(.actions button,.th-tile,.linkish,.cell,:disabled)::after,
+  .region-vista::after,
   :is(.live-card,#planCard)::before, :is(.live-card,#planCard)::after { transition-duration: var(--art-fade) !important; }
 }
+/* Lower the base only after the incoming artwork covers it. */
+html.art-out body::before { transition: opacity 0s var(--art-fade); }
+html.art-back body::before { transition: none; }
+.art-fade, .art-fade.on { transition: opacity var(--art-fade) ease-in-out; }

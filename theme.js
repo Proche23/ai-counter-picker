@@ -315,7 +315,6 @@
         <h2 class="th-title">Choose your region</h2>
         <p class="th-lead">Colours, buttons and champion art for the whole site, here, in the draft tracker and on your phone: the region's champions take turns behind the page. The Blue and Red team colours stay the same.</p>
         <section class="region-guide"></section><div class="th-grid">${THEMES.map((t) => `<button class="th-tile" data-theme="${t.id}" style="--t-a:${t.c.accent};--t-e:${t.c.energy};--t-bg:${t.c.bg0}">
-          <span class="th-art" style="background-image:url('${SPLASH(t.art)}');background-position:${t.pos}"></span>
           <span class="th-crest">${crest(t.id)}</span>
           <span class="th-text"><span class="th-name">${t.name}</span><span class="th-tag">${t.tag}</span></span>
           <span class="th-check" aria-hidden="true"></span></button>`).join("")}</div></div>`;
