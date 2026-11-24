@@ -1698,6 +1698,9 @@ function applyClient(st, force = false) {
   syncFlags();
   keepAwake();
   if (PH.open && (st.phone?.watching || 0) !== PH.watching) refreshPhone();   // a phone just connected (or left)
+  const mode = S.follow && st.status === "on" && casualQueue(st);
+  showCasualLobby(st, mode);
+  if (mode) return;
   if (!RES) return;
   if (S.follow && CL.cs) return followDraft(CL.cs, force);
   clearTurn();

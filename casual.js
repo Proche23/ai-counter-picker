@@ -88,3 +88,5 @@ function showPicks() {
 }
 champion.onchange = showAdvice;
 showPicks();
+const requestedMode = new URLSearchParams(location.search).get("mode");
+if (Object.hasOwn(challenges, requestedMode)) document.querySelector('input[value="' + requestedMode + '"]').click();

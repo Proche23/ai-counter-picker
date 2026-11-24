@@ -2252,3 +2252,4 @@ body { isolation: isolate; }
 html.art-out body::before { transition: opacity 0s var(--art-fade); }
 html.art-back body::before { transition: none; }
 .art-fade, .art-fade.on { transition: opacity var(--art-fade) ease-in-out; }
+body.casual-lobby .board, body.casual-lobby #analysis { display:none; } #casualLobby { max-width:800px; margin:20px auto; }
