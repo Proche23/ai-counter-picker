@@ -144,6 +144,7 @@
     if (meta) meta.content = t.c.bg0;
     current = t.id;
     resetArt();
+    if (document.querySelector(".th-modal.open")) regionGuide(t);
     document.querySelectorAll("[data-theme-btn]").forEach(paintButton);
     document.querySelectorAll(".th-tile").forEach((el) => el.classList.toggle("on", el.dataset.theme === t.id));
   }
@@ -279,6 +280,30 @@
     b.title = `Theme: ${t.name}. Choose a region: its colours and art for the whole site`;
   }
   let box = null;
+  function regionGuide(t) {
+    const guide = document.querySelector(".region-guide");
+    if (!guide) return;
+    guide.style.setProperty("--guide-art", 'url("' + SPLASH(t.art) + '")');
+    guide.innerHTML = '<h3>' + crest(t.id) + ' ' + t.name + ' field guide</h3><p>' + t.tag + '</p><label>Scout a champion <select></select></label><p aria-live="polite"></p>';
+    const roster = guide.querySelector("select");
+    const note = guide.lastElementChild;
+    for (const id of t.arts) roster.add(new Option(id.replace(/([a-z])([A-Z])/g, "$1 $2"), id));
+    async function inspect() {
+      const id = roster.value;
+      guide.style.setProperty("--guide-art", 'url("' + SPLASH(id) + '")');
+      note.textContent = "Loading champion tip…";
+      try {
+        const read = async url => { const r = await fetch(url); if (!r.ok) throw Error(); return r.json(); };
+        const versions = await read("https://ddragon.leagueoflegends.com/api/versions.json");
+        const data = await read("https://ddragon.leagueoflegends.com/cdn/" + versions[0] + "/data/en_US/champion/" + id + ".json");
+        if (roster.value !== id) return;
+        const c = data.data[id];
+        note.textContent = c.enemytips?.[0] || c.allytips?.[0] || c.name + " abilities · " + c.spells.map(s => s.name).join(" · ");
+      } catch { if (roster.value === id) note.textContent = "Champion tips are unavailable. Select a champion to retry."; }
+    }
+    roster.addEventListener("change", inspect);
+    inspect();
+  }
   function openPicker() {
     if (!box) {
       box = document.createElement("div");
@@ -289,7 +314,7 @@
       box.innerHTML = `<div class="th-box"><button class="modal-x th-x" title="Close (Esc)">✕</button>
         <h2 class="th-title">Choose your region</h2>
         <p class="th-lead">Colours, buttons and champion art for the whole site, here, in the draft tracker and on your phone: the region's champions take turns behind the page. The Blue and Red team colours stay the same.</p>
-        <div class="th-grid">${THEMES.map((t) => `<button class="th-tile" data-theme="${t.id}" style="--t-a:${t.c.accent};--t-e:${t.c.energy};--t-bg:${t.c.bg0}">
+        <section class="region-guide"></section><div class="th-grid">${THEMES.map((t) => `<button class="th-tile" data-theme="${t.id}" style="--t-a:${t.c.accent};--t-e:${t.c.energy};--t-bg:${t.c.bg0}">
           <span class="th-art" style="background-image:url('${SPLASH(t.art)}');background-position:${t.pos}"></span>
           <span class="th-crest">${crest(t.id)}</span>
           <span class="th-text"><span class="th-name">${t.name}</span><span class="th-tag">${t.tag}</span></span>
@@ -303,6 +328,7 @@
       document.addEventListener("keydown", (e) => { if (e.key === "Escape" && box.classList.contains("open")) closePicker(); });
     }
     box.querySelectorAll(".th-tile").forEach((el) => el.classList.toggle("on", el.dataset.theme === current));
+    regionGuide(BY_ID[current]);
     box.classList.add("open");
     box.querySelector(".th-tile.on")?.focus({ preventScroll: true });
   }
