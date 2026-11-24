@@ -2236,3 +2236,14 @@ html.art-out :is(.actions, .live-card, #planCard)::before { opacity: 0; }
     to { background-position: center, calc(50% + 14px) var(--panel-art-y, 20%); }
   }
 }
+
+/* Let the rotating toolbar illustration show through the action buttons. */
+.actions button:not(:disabled), .actions button:not(:disabled):hover {
+  background: linear-gradient(180deg, rgba(10,17,28,.16), rgba(10,17,28,.48));
+  color: #fff;
+  border-color: var(--accent);
+  text-shadow: 0 1px 3px #000, 0 0 6px #000;
+}
+.actions::before, .actions::after {
+  background-image: linear-gradient(90deg, rgba(9,14,22,.16), rgba(9,14,22,.08)), var(--art);
+}
