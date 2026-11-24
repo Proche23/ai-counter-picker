@@ -1,0 +1,28 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1">
+<title>Casual Play · AI Counter Picker</title>
+<link rel="stylesheet" href="style.css?v=4be2dcb7fb">
+<style>
+body { background: radial-gradient(ellipse at top right,#273954,transparent 58%),#09121c; }
+main { max-width: 780px; margin: 6vh auto; padding: 20px; }
+h1 { color: var(--white); font: 700 clamp(36px,7vw,68px)/1.05 Georgia,serif; margin: 18px 0; }
+fieldset { display:flex; flex-wrap:wrap; gap:8px; border:0; padding:0; margin:28px 0 16px; }
+legend { margin-bottom:8px; } .mode { padding:8px 13px; background:#172638; border:1px solid #56637a; cursor:pointer; }
+.mode:has(:checked) { border-color:var(--gold); color:var(--gold-hi); } .card { margin:16px 0; }
+#prompt { font: 24px/1.35 Georgia,serif; color:var(--white); margin:14px 0 22px; }
+</style>
+<script defer src="casual.js?v=4be2dcb7fb"></script>
+</head>
+<body><main><a href="./">← Draft board</a><h1>Casual Play</h1>
+<p>Pick the mode your party is queueing for and roll a challenge to try together.</p>
+<fieldset><legend>Game mode</legend>
+<label class="mode"><input type="radio" name="mode" value="ARAM" checked> ARAM</label>
+<label class="mode"><input type="radio" name="mode" value="Arena"> Arena</label>
+<label class="mode"><input type="radio" name="mode" value="URF"> URF</label>
+<label class="mode"><input type="radio" name="mode" value="Other"> Other casual modes</label></fieldset>
+<section class="card"><h2 id="heading">ARAM challenge</h2><p id="prompt" aria-live="polite"></p>
+<button id="roll">Roll another</button> <button id="done">Mark complete</button><p id="score" aria-live="polite"></p></section>
+</main></body></html>
