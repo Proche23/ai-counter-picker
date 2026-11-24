@@ -1444,7 +1444,42 @@ function bindLive() {
   applyLiveCard();   // a game running in your client: its score goes straight in
 }
 const LIVE = { upd: null, setMode: null, auto: false };
-function applyLiveCard() {   // the running game's score (from the client) into the live card's controls
+function liveWinCondition(game) {
+  if (!game || !["B", "R"].includes(game.my_side)) return "";
+  const us = game.my_side;
+  const sign = us === "B" ? 1 : -1;
+  const state = game.state || {};
+  const rift = Number(game.map) === 11;
+  if (rift && state.elder * sign < 0) return "They have Elder. Give ground and clear waves from safety until the buff expires.";
+  const enemies = (game.players || []).filter(p => p.side === (us === "B" ? "R" : "B") && p.champ);
+  const lead = p => p.k - p.d;
+  const threat = enemies.filter(p => p.k >= 4 && lead(p) >= 3)
+    .sort((a, b) => lead(b) - lead(a) || b.k - a.k)[0];
+  if (threat) return threat.champ + " is " + threat.k + "/" + threat.d + ". Avoid isolated skirmishes with them. Group for a numbers advantage or wait until they show elsewhere before committing.";
+  if (rift && state.baron * sign < 0) return "They have Baron. Clear the empowered waves together before leaving base to contest vision.";
+  if (rift && state.baron * sign > 0) return "Your team has Baron. Push with your empowered wave and pressure a tower before chasing kills.";
+  if (state.gold * sign <= -3) return "Their team has the item lead. Collect safe waves and make them walk into your vision before taking a fight.";
+  if (state.gold * sign >= 3) return "Your team has the item lead. Spend before the next fight, group around your strongest teammate and turn pressure into a tower.";
+  return "";
+}
+
+function updateLivePlan() {
+  const card = $("#planCard");
+  const advice = liveWinCondition(S.follow && !CL.cs && CL.game);
+  let box = card.querySelector(".live-condition");
+  if (!advice) { box?.remove(); return; }
+  if (!box) {
+    box = document.createElement("section");
+    box.className = "live-condition";
+    box.innerHTML = "<h2>Live win condition</h2><p></p>";
+    card.prepend(box);
+  }
+  const message = box.lastElementChild;
+  if (message.textContent !== advice) message.textContent = advice;
+}
+
+function applyLiveCard() {
+  updateLivePlan();   // the running game's score (from the client) into the live card's controls
   const g = following() ? null : CL.game;
   const head = $("#liveCard h2");
   if (!$("#live") || !g || !S.follow) { LIVE.auto = false; $("#liveCard").classList.remove("auto"); return; }
@@ -2383,6 +2418,7 @@ function renderAnalysis() {
   bindLive();
   if (RES.complete) {
     $("#planCard").innerHTML = waysHTML();
+    updateLivePlan();
     $("#buildCard").innerHTML = teamBuildsHTML();
   } else if (RES.next?.action === "ban") {
     $("#planCard").innerHTML = "";
