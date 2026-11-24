@@ -990,6 +990,7 @@ function renderTeams(instant = false) {   // instant: draw a just-typed champion
   const taken = used(), present = new Set();
   for (const side of ["B", "R"]) {
     const lower = side === "B" ? "blue" : "red";
+    $(`#${lower}Side`).classList.toggle("yours", S.us === side);   // (your team glows: you can tell at a glance)
     const bans = side === "B" ? S.blueBans : S.redBans;
     const picks = side === "B" ? S.blue : S.red;
     $(`#${lower}TeamName`).textContent = (side === "B" ? S.blueTeam : S.redTeam) || "";
@@ -1369,9 +1370,11 @@ function liveHTML() {
         </div>
         <div class="wide"><button id="lvReset">Reset score</button></div>
       </div>
-      <div class="live-out"><div class="lv-sum" id="lvSum"></div><div class="big" id="lvP"></div><div class="muted" id="lvNote"></div>
+      <div class="live-out"><div class="lv-sum" id="lvSum"></div>
+        <span class="lv-odds" title="How often pro teams in this spot went on to win (LCK and international games). Solo queue teams throw leads far more often, so in your own games a lead is worth less than this.">Pro odds</span>
+        <div class="big" id="lvP"></div><div class="muted" id="lvNote"></div>
         <div class="winbar mini"><div class="wb-blue" id="lvBlue" style="width:50%"></div><div class="wb-red" id="lvRed" style="width:50%"></div></div></div>
-      <div><h3>If the game goes like this</h3>
+      <div><h3>If the game goes like this <span class="lv-odds">Pro odds</span></h3>
         <table class="mini"><thead><tr><th>Gold at</th><th>Blue 3k down</th><th>1.5k down</th><th>Even</th><th>1.5k up</th><th>3k up</th></tr></thead><tbody>${rows}</tbody></table>
         <p class="muted">Blue's win chance from the gold difference alone (the lab's gold-only model, which already counts the towers and dragons that usually come with a lead).</p></div>
     </div>`;
@@ -1401,7 +1404,8 @@ function bindLive() {
       <div><span class="lv-side">Red</span> <span style="color:var(--red)">${pct1(1 - p)}</span></div>`;
     const d = p - pre;
     $("#lvNote").textContent = `Win chance at ${m} min${goldOnly ? " from the gold difference" : " from the full score"}. Before the game: Blue ${pct1(pre)}` +
-      (Math.abs(d) >= 0.005 ? `; ${d > 0 ? "Blue" : "Red"} has gained ${pct1(Math.abs(d))} since.` : ".");
+      (Math.abs(d) >= 0.005 ? `; ${d > 0 ? "Blue" : "Red"} has gained ${pct1(Math.abs(d))} since.` : ".") +
+      (S.solo ? " These are pro odds: solo queue leads get thrown more often, so your real chance sits closer to 50%." : "");
     $("#lvBlue").style.width = `${p * 100}%`;
     $("#lvRed").style.width = `${(1 - p) * 100}%`;
   };
@@ -1709,11 +1713,37 @@ function followDraft(cs, force) {
   renderPhase(); renderTeams(); renderRecs();   // only hovers or the timer changed: no new analysis needed
 }
 
+function checkRoles(want) {   // once a game starts: the roles the game itself reports replace the ones guessed in champ select
+  const key = S.clientKey || "game";
+  if (S.rolesChecked === key) return false;
+  const moved = [];
+  let complete = true;
+  for (const side of ["B", "R"]) {
+    const known = want[side].filter((c) => c.role);
+    if (known.length < 5 || new Set(known.map((c) => c.role)).size < 5) complete = false;   // (the game hasn't said for everyone yet)
+    const taken = new Set(known.map((c) => c.role));
+    const shown = roleMap(side);   // (the roles the board showed: set in champ select, or guessed from the champions)
+    for (const p of side === "B" ? S.blue : S.red) {
+      const live = want[side].find((c) => c.champ === p.champ)?.role;
+      if (live) {
+        if ((p.role || shown[p.champ]) !== live) moved.push(`${p.champ} is ${ROLE_NAME[live]}`);
+        p.role = live;
+      } else if (p.role && taken.has(p.role)) p.role = null;   // (its guessed role belongs to someone else: guess again)
+    }
+  }
+  if (complete) S.rolesChecked = key;   // (checked for good once the game has named every role)
+  if (!moved.length) { saveState(); return false; }
+  toast(`Game started: roles checked with the game. ${moved.join(", ")}`);
+  saveState();
+  refresh();
+  return true;
+}
+
 function followGame(g) {   // a game running in your client: make sure its 10 champions are on the board
   const want = { B: g.champs.B.filter((c) => BY_NAME[c.champ]), R: g.champs.R.filter((c) => BY_NAME[c.champ]) };
   if (want.B.length !== 5 || want.R.length !== 5) return false;
   const have = new Set([...S.blue, ...S.red].map((p) => p.champ));
-  if ([...want.B, ...want.R].every((c) => have.has(c.champ))) return false;   // already there (followed from champ select)
+  if ([...want.B, ...want.R].every((c) => have.has(c.champ))) return checkRoles(want);   // already there (followed from champ select)
   const had = S.blue.length + S.red.length + S.blueBans.length + S.redBans.length;
   CLEARED = had ? JSON.parse(JSON.stringify(S)) : null;
   SWAP = null;

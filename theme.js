@@ -191,7 +191,7 @@
   // sight. It rests while the page is hidden (another tab, a minimised window) and with data saver on.
   // (A slow fade has no movement in it, so it stays on with "reduce motion" too: a fade is what that
   // setting swaps movement for.)
-  const ART_EVERY_MS = 5000, ART_FADE_MS = 1500;   // (a new champion every 5 s, 1.5 s of it the fade)
+  const ART_EVERY_MS = 7000, ART_FADE_MS = 1500;   // (a new champion every 7 s, 1.5 s of it the fade)
   root.style.setProperty("--art-fade", `${ART_FADE_MS}ms`);   // (the stylesheet's fades take this long too)
   let artTimer = 0, artIdx = 0, artLayer = null, artOnLayer = false, artFadeEnd = 0;
   let artRun = 0;   // (a new theme, or a newer turn, retires a turn that's still getting its picture ready)
@@ -209,7 +209,7 @@
     return artLayer;
   }
   const artPos = (t, id) => (id === t.art ? t.pos : "center 20%");
-  function scheduleArt(ms = ART_EVERY_MS - ART_FADE_MS) {
+  function scheduleArt(ms = ART_EVERY_MS) {
     clearTimeout(artTimer);
     const t = BY_ID[current];
     if (navigator.connection?.saveData || document.hidden || !t || t.arts.length < 2) return;
@@ -253,6 +253,8 @@
       } else {   // the layer: the same
         layer.style.backgroundImage = `url("${src}")`;
         layer.style.backgroundPosition = artPos(t, id);
+        root.style.setProperty("--panel-next-art", layer.style.backgroundImage);
+        root.style.setProperty("--panel-next-pos", artPos(t, id));
         root.classList.add("art-out");
         root.classList.remove("art-back");
         layer.classList.add("on");

@@ -2177,3 +2177,62 @@ body.mode-stats #nextGameBtn, body.mode-stats header.top .actions > .sep { displ
   .ms-bar { grid-column: 1 / -1; }
   .ms-summary li { flex-direction: column; gap: 4px; }
 }
+
+/* ---------------------------------------------------------------- your team: a faint glow, so you can tell at a glance */
+.team.yours { --yc: 10, 200, 185; box-shadow: var(--shadow), 0 0 0 1px rgba(var(--yc), .35), 0 0 26px -6px rgba(var(--yc), .55);
+  animation: yours-breathe 4.5s ease-in-out infinite; }
+.team.red.yours { --yc: 232, 64, 87; }
+.team.yours .side-name { text-shadow: 0 0 10px rgba(var(--yc), .75), 0 0 22px rgba(var(--yc), .4); }
+.team.yours .team-head::after { content: "YOU"; order: 9; padding: 1px 7px; border: 1px solid rgba(var(--yc), .6); border-radius: 2px;
+  font: 700 10px/1.5 Inter, system-ui, sans-serif; letter-spacing: 1.5px; color: rgb(var(--yc)); background: rgba(var(--yc), .1);
+  box-shadow: 0 0 10px -2px rgba(var(--yc), .6); }
+.team.red.yours .team-head::after { order: -1; }
+@keyframes yours-breathe {
+  0%, 100% { box-shadow: var(--shadow), 0 0 0 1px rgba(var(--yc), .3), 0 0 22px -8px rgba(var(--yc), .45); }
+  50% { box-shadow: var(--shadow), 0 0 0 1px rgba(var(--yc), .45), 0 0 30px -4px rgba(var(--yc), .65); }
+}
+@media (prefers-reduced-motion: reduce) { .team.yours { animation: none; } }
+
+/* ---------------------------------------------------------------- the live win chance is pro odds: say so */
+.lv-odds { display: inline-block; margin: 2px 0 4px; padding: 1px 7px; border: 1px solid rgba(var(--accent-rgb), .45); border-radius: 2px;
+  font: 700 10px/1.5 Inter, system-ui, sans-serif; letter-spacing: 1.4px; text-transform: uppercase; color: var(--gold);
+  background: rgba(var(--accent-rgb), .08); vertical-align: middle; cursor: help; }
+h3 .lv-odds { margin: 0 0 0 8px; }
+
+/* Keep the region artwork close to the controls and predictions it frames. */
+body::before, .art-fade { visibility: hidden; }
+.actions, .live-card, #planCard {
+  position: relative;
+  isolation: isolate;
+}
+:is(.actions, .live-card, #planCard)::before,
+:is(.actions, .live-card, #planCard)::after {
+  content: "";
+  position: absolute;
+  inset: -16px;
+  padding: 16px;
+  z-index: -1;
+  pointer-events: none;
+  clip-path: inset(16px round var(--radius));
+  background: linear-gradient(90deg, rgba(var(--bg0-rgb), .78), rgba(var(--bg0-rgb), .32)),
+              var(--art) var(--art-pos) / cover no-repeat;
+  opacity: .85;
+  transition: opacity var(--art-fade, 1.5s) linear;
+}
+:is(.actions, .live-card, #planCard)::after {
+  --art: var(--panel-next-art, none);
+  --art-pos: var(--panel-next-pos, center 20%);
+  opacity: 0;
+}
+html.art-out :is(.actions, .live-card, #planCard)::after { opacity: .85; }
+html.art-out :is(.actions, .live-card, #planCard)::before { opacity: 0; }
+@media (prefers-reduced-motion: no-preference) {
+  :is(.actions, .live-card, #planCard)::before,
+  :is(.actions, .live-card, #planCard)::after {
+    animation: region-art-drift 7s linear infinite alternate;
+  }
+  @keyframes region-art-drift {
+    from { background-position: center, calc(50% - 14px) var(--panel-art-y, 20%); }
+    to { background-position: center, calc(50% + 14px) var(--panel-art-y, 20%); }
+  }
+}
