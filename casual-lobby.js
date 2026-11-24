@@ -25,13 +25,11 @@ function showCasualLobby(st, mode) {
   const auto = partner?.champ || partner?.hover || "";
   const own = st.game?.me || cs?.me?.champ || cs?.me?.hover || "";
   const blocked = [...(cs?.bans?.B || []), ...(cs?.bans?.R || [])];
-  const key = JSON.stringify([mode,cs?.key,auto,own,blocked]);
+  const key = JSON.stringify([mode,cs?.key,auto,own,blocked,!!st.game]);
   box.hidden = false;
   if (box.dataset.key === key) return;
-  const old = box.dataset.session === String(cs?.key) ? box.querySelector("input")?.value : "";
-  box.dataset.session = String(cs?.key);
   box.dataset.key = key;
-  box.innerHTML = '<h2></h2><div class="arena-controls"></div><div class="arena-results"></div><a>Open casual mode guide ↗</a>';
+  box.innerHTML = '<h2></h2><div class="arena-results"></div><a>Open casual mode guide ↗</a>';
   box.querySelector("h2").textContent = mode + " lobby";
   box.querySelector("a").href = "casual.html?mode=" + encodeURIComponent(mode);
   if (own) {
@@ -40,28 +38,30 @@ function showCasualLobby(st, mode) {
     box.querySelector("h2").after(champion);
   }
   if (mode !== "Arena") return;
-  box.querySelector(".arena-controls").innerHTML = '<label>Duo partner <input list="arenaChampions" placeholder="Choose or type a champion"></label><datalist id="arenaChampions"></datalist>';
-  const input = box.querySelector("input");
-  for (const c of CHAMPS) box.querySelector("datalist").append(new Option(c.name));
-  input.value = auto || old || "";
-  function update() {
-    const ally = input.value.trim().toLowerCase();
-    const mine = arenaPairs.find(r => r[0] === own);
-    const eligible = arenaPairs.filter(r => r[0].toLowerCase() !== ally && !blocked.includes(r[0]));
-    const fits = r => r[3].some(c => c.toLowerCase() === ally);
-    const rows = mine ? [mine] : eligible.sort((a,b) => Number(fits(b))-Number(fits(a)) || b[1]-a[1]).slice(0,3);
-    const out = box.querySelector(".arena-results");
-    out.replaceChildren();
-    for (const [champ,rate,n,partners,tip] of rows) {
-      const line = document.createElement("p");
-      line.textContent = champ + " · " + rate.toFixed(2) + "% first place (" + n + " games). Pair with " + partners.join(", ") + ". " + tip;
-      out.append(line);
-    }
-    const source = document.createElement("a");
-    source.href = "https://www.metasrc.com/lol/arena/na/tier-list";
-    source.textContent = "NA Arena · patch 26.23 snapshot · individual champion rates";
-    out.append(source);
+  renderArenaStats(box.querySelector(".arena-results"), { own, partner: auto, blocked });
+}
+
+function renderArenaStats(out, { own = "", partner = "", blocked = [] } = {}) {
+  const rows = arenaPairs.filter(([champ]) => champ === own || (champ !== partner && !blocked.includes(champ)));
+  const priority = ([champ, , , partners]) => champ === own ? 2 : Number(partners.includes(partner));
+  rows.sort((a, b) => priority(b) - priority(a) || b[1] - a[1]);
+  out.replaceChildren();
+  for (const [champ, rate, games, partners, tip] of rows) {
+    const line = document.createElement("p");
+    const label = document.createElement("strong");
+    label.textContent = champ + (champ === own ? " (you)" : "");
+    line.append(label, ` · ${rate.toFixed(2)}% first place (${games} games). Pair with ${partners.join(", ")}. ${tip}`);
+    out.append(line);
   }
-  input.oninput = update;
-  update();
+  if (own && !rows.some(([champ]) => champ === own)) {
+    const note = document.createElement("p");
+    note.textContent = `${own} is outside this snapshot's shortlist.`;
+    out.prepend(note);
+  }
+  const sourceLine = document.createElement("p");
+  const source = document.createElement("a");
+  source.href = "https://www.metasrc.com/lol/arena/na/tier-list";
+  source.textContent = "NA Arena · patch 26.23 snapshot · individual champion rates";
+  sourceLine.append(source);
+  out.append(sourceLine);
 }

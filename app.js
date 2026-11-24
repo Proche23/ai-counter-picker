@@ -270,7 +270,7 @@ function setMode(mode, quiet = false) {   // the tabs at the top: the draft boar
   }
   window.ACPMyStats?.close();
   if (!quiet) window.scrollTo({ top: 0 });
-  refresh();
+  if (!RES && !busy) refresh();
 }
 function setRank(rank) {
   if (!RANKS.includes(rank) || rank === S.rank) return;

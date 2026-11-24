@@ -12,7 +12,7 @@
   const P = load_();
   const st = {
     queue: QUEUES.some(([q]) => q === P.queue) ? P.queue : "ranked", count: COUNTS.includes(P.count) ? P.count : 20,
-    role: ROLE_NAME[P.role] ? P.role : "", res: null, error: null, loading: false, open: false, seq: 0, h: {},
+    role: ROLE_NAME[P.role] ? P.role : "", res: null, error: null, loading: false, open: false, dirty: true, seq: 0, h: {},
   };
   const save = () => { try { localStorage.setItem(PREF, JSON.stringify({ queue: st.queue, count: st.count, role: st.role })); } catch (e) { /* private window */ } };
   const root = () => document.getElementById("myStats");
@@ -247,10 +247,11 @@
 
   function render() {
     const el = root();
-    if (!el || !st.open) return;
+    if (!el || !st.open) { st.dirty = true; return; }
     const r = st.res;
     el.innerHTML = head() + (r ? roles(r) + summary(r) + `<div class="ms-groups">${r.groups.filter((g) => g.rows.length).map((g) => group(g, r)).join("")}</div>`
       + champs(r) + games(r) + foot(r) : emptyState());
+    st.dirty = false;
   }
 
   // ---- clicks
@@ -272,8 +273,8 @@
       st.open = true;
       const el = root();
       if (el) el.hidden = false;
-      render();
-      if (!st.res || ago(st.res.fetched) !== "just now") load();
+      if (!st.loading && !st.res && !st.error) load();
+      else if (st.dirty) render();
     },
     close() {
       st.open = false;

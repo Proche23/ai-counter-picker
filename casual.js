@@ -35,12 +35,6 @@ document.querySelector("#done").onclick = () => {
 draw();
 
 const guides = {
-  Arena: [
-    ["Xin Zhao", "Start here for melee pressure. Renata Glasc can keep you fighting through your first dive. Zilean is another strong partner.", "Silver: Deft · Gold: Twice Thrice · Prismatic: Dual Wield", "https://arenasweats.lol/pages/champions/xin-zhao/"],
-    ["Swain", "Pair with Seraphine. Pull the target into her crowd control and keep them inside your ultimate.", "Gold: Phenomenal Evil · Prismatic: Infernal Conduit", "https://arenasweats.lol/pages/champions/swain/"],
-    ["Brand", "Pair with Shyvana for a frontline that draws enemies together before you cast your ultimate.", "Gold: Magic Missile · Prismatic: Infernal Conduit", "https://arenasweats.lol/pages/champions/brand/"],
-    ["Jinx", "Pick with Lulu or Renata Glasc when your duo wants a protected ranged carry.", "Silver: Deft · Gold: Critical Rhythm · Prismatic: Dual Wield", "https://arenasweats.lol/pages/champions/jinx/"]
-  ],
   ARAM: [
     ["Sona", "Take her when your bench offers sustain and your team already has damage. Pair with Jinx: shield her during poke, then save Crescendo for divers.", "", "https://u.gg/lol/champions/aram/Sona-aram"],
     ["Malphite", "Take him when your team needs a fight starter. With Miss Fortune, catch a group in Unstoppable Force as she channels Bullet Time.", "", ""],
@@ -56,7 +50,6 @@ const guides = {
   ]
 };
 const notes = {
-  Arena: "Patch 26.23 snapshot. Xin Zhao is the first pick on this shortlist. Select a champion for partner and augment priorities.",
   ARAM: "Choose from your roll or bench. Sona was S tier on U.GG in patch 26.23. The other picks are suggested teamfight combos.",
   Mayhem: "Patch 26.23 augment shortlist. Pick for the job your team needs, then look for these offers.",
   URF: "Suggested ability combos. Current patch win-rate data was unavailable."
@@ -79,8 +72,16 @@ function showAdvice() {
   }
 }
 function showPicks() {
+  const arena = mode === "Arena";
   const picks = guides[mode];
-  document.querySelector("#scout").hidden = !picks;
+  document.querySelector("#scout").hidden = !picks && !arena;
+  document.querySelector("#championPicker").hidden = arena;
+  document.querySelector("#scoutTitle").textContent = arena ? "Arena stats" : "Quick picks";
+  document.querySelector("#pickNote").hidden = arena;
+  if (arena) {
+    renderArenaStats(document.querySelector("#advice"));
+    return;
+  }
   if (!picks) return;
   document.querySelector("#pickNote").textContent = notes[mode];
   champion.replaceChildren(...picks.map(([name]) => new Option(name)));
