@@ -6,7 +6,7 @@
    browser. Following the League client, phone mode, the tracker window and Riot look-ups need the PC. */
 (() => {
   const realFetch = window.fetch.bind(window);
-  const V = "4ced356dc6";   // (build_web.py: this build's stamp, so a browser never mixes files from two builds)
+  const V = "1a5da438b7";   // (build_web.py: this build's stamp, so a browser never mixes files from two builds)
   const BASE = new URL(".", document.currentScript?.src || location.href);   // where the site's files are
   const file = (p) => `${new URL(p, BASE).href}?v=${V}`;
   const STATIC = { "/api/meta": "data/meta.json", "/api/lab": "data/lab.json", "/api/lab_games": "data/lab_games.json" };
@@ -95,7 +95,7 @@
   // engine turns that into the board's state (the same Python as the PC version), and the page's live
   // request (/api/client) is answered like the PC version's: at once when something changed, else when it does.
   const HELPER = "http://127.0.0.1:8799";
-  const HELPER_NEWEST = "1.5";   // (build_web.py: web/league-helper.ps1's version; an older helper still works, and the League window offers this one)
+  const HELPER_NEWEST = "1.6";   // (build_web.py: web/league-helper.ps1's version; an older helper still works, and the League window offers this one)
   // Nothing may stop the board following for good: every look at the helper and every read by the engine has
   // a time limit, a look that never ends is given up on, and a hidden page looks again as soon as it's shown.
   const ASK_MS = 8000, PARSE_MS = 20000, GRACE_MS = 12000;   // (a read by the engine takes well under a second)
@@ -186,6 +186,114 @@
     helperNewest: HELPER_NEWEST,
   };
 
+  // ---- My Stats: your recent games from the League client (through the helper), worked out by the engine
+  // here. Your last look-up stays in this browser, so the tab still shows it while League is closed.
+  const MS_NEED = "1.6";   // (the first helper that can read the match history)
+  const MS_KEY = "acp-mystats-v1";
+  const MS = { state: null, at: 0, chain: Promise.resolve() };
+  const QUEUE_IDS = { ranked: [420], flex: [440], draft: [400], all: [400, 420, 430, 440, 480, 490, 700] };
+  const msSaved = () => { try { return JSON.parse(localStorage.getItem(MS_KEY) || "null"); } catch (e) { return null; } };
+  const msSave = (s) => { try { localStorage.setItem(MS_KEY, JSON.stringify(s)); } catch (e) { /* full, or a private window */ } };
+  const olderThan = (a, b) => {
+    const x = String(a || "0").split(".").map(Number), y = String(b).split(".").map(Number);
+    for (let i = 0; i < Math.max(x.length, y.length); i++) if ((x[i] || 0) !== (y[i] || 0)) return (x[i] || 0) < (y[i] || 0);
+    return false;
+  };
+  async function helperGet(path, ms = 20000) {
+    const stop = new AbortController(), t = setTimeout(() => stop.abort(), ms);
+    try {
+      const r = await realFetch(`${HELPER}${path}`, { cache: "no-store", signal: stop.signal });
+      if (!r.ok) throw new Error(`the helper answered ${r.status}`);
+      return await r.json();
+    } finally {
+      clearTimeout(t);
+    }
+  }
+  function trimTimeline(tl) {   // what My Stats reads from a game's timeline (the same cut as leagueclient.trim_timeline)
+    if (!tl || !Array.isArray(tl.frames)) return null;
+    const KEEP = ["totalGold", "xp", "minionsKilled", "jungleMinionsKilled", "level"];
+    return { frames: tl.frames.map((fr, i) => {
+      const pf = {};
+      if (i <= 16) {
+        for (const [pid, f] of Object.entries(fr?.participantFrames || {})) {
+          const o = {};
+          KEEP.forEach((k) => { if (f?.[k] != null) o[k] = f[k]; });
+          pf[pid] = o;
+        }
+      }
+      const events = (fr?.events || []).filter((e) => e?.type === "CHAMPION_KILL").map((e) => ({ type: e.type, timestamp: e.timestamp,
+        killerId: e.killerId, victimId: e.victimId, assistingParticipantIds: e.assistingParticipantIds }));
+      return { timestamp: fr?.timestamp, participantFrames: pf, events };
+    }) };
+  }
+  async function readClient(queue, count) {   // what the client shows about your games -> the engine's raw input
+    const fail = (status, body) => Object.assign(new Error(body.error), { status, body });
+    let ping;
+    try { ping = await helperGet("/ping", 4000); } catch (e) {
+      throw fail(409, { error: "Start the League helper (the League button at the top), open League, then press Refresh: "
+        + "the website reads your games through it.", no_helper: true });
+    }
+    if (olderThan(ping.helper, MS_NEED)) {
+      throw fail(409, { error: `Your League helper is version ${ping.helper}; My Stats needs ${MS_NEED} or newer. Get the new one with the `
+        + "League button at the top (the same steps as before), then Refresh.", old_helper: true });
+    }
+    const me = await helperGet("/me");
+    if (!me.client || !me.data?.puuid) {
+      throw fail(409, { error: "The League helper is running, but League isn't open (or not signed in yet): open it, then Refresh.", no_client: true });
+    }
+    const ranked = await helperGet("/ranked").catch(() => null);
+    const want = QUEUE_IDS[queue] || QUEUE_IDS.ranked;
+    const hist = [];
+    for (let page = 0; page < 5; page++) {
+      const h = await helperGet(`/history?beg=${page * 20}&end=${page * 20 + 19}`);
+      const chunk = h?.data?.games?.games || [];
+      hist.push(...chunk);
+      if (chunk.length < 20 || hist.filter((g) => want.includes(g.queueId)).length >= count) break;
+    }
+    const mine = hist.filter((g) => want.includes(g.queueId)).sort((a, b) => (b.gameCreation || 0) - (a.gameCreation || 0)).slice(0, count);
+    const games = {}, timelines = {};
+    for (const g of mine) {   // (one at a time: the helper answers one thing at a time, and the board still needs it too)
+      const id = String(g.gameId);
+      if (!/^\d+$/.test(id)) continue;
+      const full = await helperGet(`/game/${id}`).catch(() => null);
+      if (full?.data) games[id] = full.data;
+      const tl = await helperGet(`/timeline/${id}`).catch(() => null);
+      const t = trimTimeline(tl?.data);
+      if (t) timelines[id] = t;
+    }
+    return { me: me.data, ranked: ranked?.data || null, history: mine, games, timelines };
+  }
+  async function myStats(params) {
+    const queue = QUEUE_IDS[params.get("queue")] ? params.get("queue") : "ranked";
+    const count = Math.max(5, Math.min(Number(params.get("count")) || 20, 50));
+    const role = params.get("role") || "";
+    const fresh = params.get("fresh") === "1";
+    if (!MS.state) MS.state = msSaved();
+    let st = MS.state && MS.state.queue === queue ? MS.state : null;
+    let stale = false, why = "";
+    if (!(st && (st.count || 0) >= count && !fresh && Date.now() - MS.at < 300000)) {
+      try {
+        const raw = await readClient(queue, count);
+        const res = await engine("POST", "/api/mystats-parse", "", JSON.stringify({ raw, queue, count, fetched: new Date().toISOString() }), 120000);
+        const body = await res.json();
+        if (!res.ok) {
+          if (body.empty) return json(body, 404);
+          throw Object.assign(new Error(body.error || `error ${res.status}`), { status: res.status, body });
+        }
+        st = body;
+        MS.state = st;
+        MS.at = Date.now();
+        msSave(st);
+      } catch (e) {
+        const body = e.body || { error: `Couldn't read your games through the League helper (${e.message || e}): is it still running?`, no_helper: true };
+        if (!st) return json(body, e.status || 409);
+        stale = true;   // (League or the helper is closed: the last games read, marked as such, and why)
+        why = body.no_helper ? "The League helper isn't running (or this browser can't reach it)." : body.error || "";
+      }
+    }
+    return engine("POST", "/api/mystats-compare", "", JSON.stringify({ state: st, role, count, stale, why }), 60000);
+  }
+
   // ---- every /api/... request the pages make
   window.fetch = async (input, init = {}) => {
     const url = new URL(typeof input === "string" ? input : input.url, location.href);
@@ -211,6 +319,11 @@
       return json(prefs());
     }
     if (path === "/api/ping") return json({ app: "ai-counter-picker", web: true });
+    if (path === "/api/mystats") {   // (one look-up at a time: a role switch waits for a read that's under way)
+      const run = MS.chain.then(() => myStats(url.searchParams));
+      MS.chain = run.catch(() => {});
+      return run;
+    }
     if (path === "/api/games") return json([]);
     if (path === "/api/game") return json({ error: "Replaying a pro game (judged only with the games played before it) needs the desktop version." }, 400);
     if (path.startsWith("/api/players") || ["/api/phone", "/api/window", "/api/quit"].includes(path)) {

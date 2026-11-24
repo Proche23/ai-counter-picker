@@ -40,7 +40,7 @@ let META = null, VER = "", CHAMPS = [], BY_NAME = {}, KEY = {}, ALIAS = {};
 let POOL = null;   // your saved account's champions per role (from the Players page look-ups)
 let SWAP = null;      // {side, idx}: the pick being swapped; the next champion typed replaces it
 let CLEARED = null;   // the draft before "Clear draft", so Undo can bring it back
-let S = loadState() || freshState();
+let S = loadState() || freshState({ mode: location.hash === "#stats" ? "stats" : "pro" });
 let SHARED = null;   // a draft opened from a link (#d=...), applied once the champion list is in
 let RES = null;
 let LAST_P = 0.5;
@@ -73,7 +73,7 @@ function freshState(keep) {
     loaded: keep?.loaded || false,   // loading screen / game started: skip bans, just type the 10 champions
     follow: keep?.follow ?? true,    // fill the board in from your League client by itself
     clientKey: "",                   // which champ select (or game) this board was filled from
-    mode: keep?.mode === "solo" ? "solo" : "pro",   // the tab at the top: pro play, or solo queue at your rank
+    mode: keep?.mode === "stats" ? "stats" : "pro",   // the tab at the top: the draft board, or My Stats
     rank: RANKS.includes(keep?.rank) ? keep.rank : "silver",
     proSolo: keep?.proSolo ?? false,   // (the "Solo queue" switch as it was on the pro tab)
   };
@@ -86,6 +86,8 @@ function loadState() {
     const d = freshState(s);   // a draft saved by an older version: fill in settings added since
     for (const k of Object.keys(d)) if (s[k] === undefined) s[k] = d[k];
     if (!Array.isArray(s.poolOff)) s.poolOff = [];
+    if (s.mode === "solo") s.solo = !!s.proSolo;   // (saved on the old Solo queue tab: the switch as it was on the board)
+    s.mode = location.hash === "#stats" ? "stats" : "pro";   // the board, unless the link says My Stats
     return s;
   }
   catch (e) { return null; }
@@ -173,7 +175,8 @@ async function init() {
   bindEvents();
   openSharedDraft();
   renderMode();
-  if (soloMode()) await loadSolo();
+  if (S.mode === "stats") window.ACPMyStats?.open(STATS_HELP);   // (opened from a My Stats link)
+  window.addEventListener("hashchange", () => { if (location.hash === "#stats") setMode("stats"); else if (!location.hash) setMode("pro", true); });
   await refresh();
   if (!PHONE_VIEW) $("#champInput").focus({ preventScroll: true });   // (no jump: the draft at the top stays in view; on a phone it would pop the keyboard up)
   clientLoop();   // follow the League client from here on
@@ -193,18 +196,27 @@ function renderBadge() {   // the data line under the header: what the board's n
   $("#dataBadge").textContent = `${p.games.toLocaleString()} pro games · ${leagues}${p.region_games ? ` · +${p.region_games.toLocaleString()} from other regions` : ""} · newest: ${p.latest_event}, patch ${p.latest_patch}`;
 }
 
-function renderMode() {   // the tab strip at the top, and the rank picker under solo queue
-  const solo = soloMode();
+function renderMode() {   // the tab strip at the top: the draft board, or My Stats
+  const solo = soloMode(), stats = S.mode === "stats";
   document.body.classList.toggle("mode-solo", solo);
+  document.body.classList.toggle("mode-stats", stats);
   document.querySelectorAll(".mode-tab").forEach((b) => {
     const on = b.dataset.mode === S.mode;
     b.classList.toggle("on", on);
     b.setAttribute("aria-selected", on ? "true" : "false");
   });
+  document.querySelectorAll("nav.pages a").forEach((a) => {   // (the header's page links: Draft, or My Stats)
+    const which = pageLink(a);
+    if (which) (which === S.mode) ? a.setAttribute("aria-current", "page") : a.removeAttribute("aria-current");
+  });
+  if (stats) {
+    $("#modeNote").innerHTML = "Your own games next to the <b>average pro</b> in your role, stat by stat";
+    return;
+  }
   const rp = $("#rankPick");
-  rp.hidden = !solo;
+  if (rp) rp.hidden = !solo;
   const ranks = SOLO.data?.ranks || {};
-  if (solo) {
+  if (solo && rp) {
     rp.innerHTML = RANKS.map((r) => {
       const d = ranks[r] || {}, n = d.games || 0, on = r === S.rank;
       const tip = n ? `${RANK_LABEL[r]}: ${n.toLocaleString()} solo queue games this season${d.timelines ? `, ${d.timelines.toLocaleString()} minute by minute` : ""}${d.patch ? ` · newest patch ${d.patch}` : ""}${d.fitted ? ` · tested ${d.fitted}` : " · not tested by the lab yet"}`
@@ -233,23 +245,23 @@ async function loadSolo() {   // every rank's games and the lab's findings (agai
   if (soloMode() && dl && (dl.running || ["learning", "publishing"].includes(dl.phase))) SOLO.timer = setTimeout(loadSolo, 8000);
 }
 
-function setMode(mode) {
-  if (mode === S.mode || !["pro", "solo"].includes(mode)) return;
-  if (mode === "solo") {   // solo queue: always your own champ select (your side, your role, your pick)
-    S.proSolo = !!S.solo;
-    S.solo = true;
-    if (!S.us) S.us = "B";
-    if (!ROLE_NAME[S.myRole]) S.myRole = POOL?.main_role || "MID";
-  } else S.solo = !!S.proSolo;
+const STATS_HELP = { champImg: (n) => champImg(n), league: () => openLeague() };   // (what My Stats borrows from the board)
+function pageLink(a) {   // a header link to this page's own tabs: "pro" (Draft), "stats" (My Stats) or null
+  const href = a?.getAttribute("href") || "";
+  return /^\.?\/#stats$/.test(href) ? "stats" : (href === "/" || href === "./") ? "pro" : null;
+}
+function setMode(mode, quiet = false) {   // the tabs at the top: the draft board ("pro") or My Stats ("stats")
+  if (mode === S.mode || !["pro", "stats"].includes(mode)) return;
   S.mode = mode;
-  S.banStage = false;
-  SOLO.error = null;
+  try { window.history.replaceState(null, "", mode === "stats" ? "#stats" : location.pathname + location.search); } catch (e) { /* (an old browser) */ }
   renderMode();
-  renderPool();   // (the settings row follows at once: solo queue's own draft settings, or the pro ones)
-  renderBadge();
-  toast(mode === "solo" ? `Solo queue: the board now answers from ${rankName()} games this season`
-    : "Pro play: the board answers from pro games again");
-  if (mode === "solo") loadSolo();
+  if (mode === "stats") {
+    window.ACPMyStats?.open(STATS_HELP);
+    window.scrollTo({ top: 0 });
+    return;
+  }
+  window.ACPMyStats?.close();
+  if (!quiet) window.scrollTo({ top: 0 });
   refresh();
 }
 function setRank(rank) {
@@ -264,6 +276,7 @@ function setRank(rank) {
 
 function renderSoloEmpty() {   // solo queue mode, and no games for this rank yet: how to get them
   const el = $("#soloEmpty");
+  if (!el) return;   // (the Solo queue tab became My Stats)
   const show = soloMode() && !!SOLO.error;
   el.hidden = !show;
   document.body.classList.toggle("solo-nodata", show);
@@ -377,8 +390,8 @@ function bindEvents() {
   window.addEventListener("scroll", pinned, { passive: true });
   window.addEventListener("load", () => requestAnimationFrame(pinned));   // the page can open already scrolled down
   document.addEventListener("keydown", (e) => {
-    // start typing anywhere and it goes into the champion box
-    if (document.activeElement !== input && e.key.length === 1 && /[a-z0-9']/i.test(e.key)
+    // start typing anywhere and it goes into the champion box (on the board, not on My Stats)
+    if (S.mode !== "stats" && document.activeElement !== input && e.key.length === 1 && /[a-z0-9']/i.test(e.key)
         && !e.ctrlKey && !e.metaKey && !e.altKey && !["SELECT", "INPUT"].includes(document.activeElement?.tagName)) {
       input.focus();
     }
@@ -387,6 +400,11 @@ function bindEvents() {
   document.addEventListener("click", (e) => {   // the tabs at the top and the rank chips (also in the "no games yet" card)
     const tab = e.target.closest?.(".mode-tab[data-mode]");
     if (tab) return setMode(tab.dataset.mode);
+    const page = e.target.closest?.("nav.pages a");   // (Draft / My Stats: this page's own tabs)
+    if (page && pageLink(page) && !e.ctrlKey && !e.metaKey && !e.shiftKey && e.button === 0) {
+      e.preventDefault();
+      return setMode(pageLink(page));
+    }
     const rk = e.target.closest?.(".rank-chip[data-rank]");
     if (rk) return setRank(rk.dataset.rank);
     const go = e.target.closest?.("button[data-go]");
@@ -1658,6 +1676,12 @@ function followDraft(cs, force) {
     S = freshState(S);
     Object.assign(S, { solo: true, loaded: false, sideChosen: true, clientKey: cs.key, myChamp: null, replay: null, asOf: null });
     fresh = true;
+    if (S.mode === "stats") {   // champ select started while you were on My Stats: back to the board, which follows it
+      S.mode = "pro";
+      try { window.history.replaceState(null, "", location.pathname + location.search); } catch (e) { /* (an old browser) */ }
+      window.ACPMyStats?.close();
+      renderMode();
+    }
   }
   const sig = () => JSON.stringify([S.us, S.myRole, S.slot, S.blue, S.red, S.blueBans, S.redBans, S.banStage, clientNow(),
     S.banStage ? CL.hover[S.us] : null, CL.cs?.turn?.mine ? CL.myHover : null]);   // (teammates' plans and your hover change the advice)

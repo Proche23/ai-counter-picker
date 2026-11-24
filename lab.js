@@ -800,11 +800,9 @@ async function init() {
   }
   const proMeta = `${lab.games.toLocaleString()} pro games predicted before their result · ${lab.first} to ${lab.last} · re-learned every ${lab.step_days} days`;
   $("#labMeta").textContent = proMeta;
-  // two tabs, like the board's: the pro report exactly as it was, and the solo queue lab on its own
-  $("#lab").innerHTML = `<nav class="lab-tabs" role="tablist" aria-label="Which lab">
-      <button type="button" role="tab" class="mode-tab on" data-lab="pro" aria-selected="true"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.5 9.9 5.4l4.3.6-3.1 3 .7 4.3L8 11.3l-3.8 2 .7-4.3-3.1-3 4.3-.6Z"/></svg><span class="mt-name">Pro games</span><small>every pro game, tested in order</small></button>
-      <button type="button" role="tab" class="mode-tab" data-lab="solo" aria-selected="false"><svg viewBox="0 0 16 16" aria-hidden="true"><path d="M8 1.8 13.5 8 8 14.2 2.5 8Z"/><path d="M8 5.2 10.5 8 8 10.8 5.5 8Z"/></svg><span class="mt-name">Solo queue</span><small>each rank's games, tested the same way</small></button>
-    </nav><div id="labPro"></div><div id="labSolo" hidden><section class="card"><p class="muted">Loading…</p></section></div>`;
+  // the pro report (the solo queue lab's tab went with the board's Solo queue tab, which became My Stats;
+  // soloSection still draws it if it ever comes back)
+  $("#lab").innerHTML = `<div id="labPro"></div>`;
   $("#labPro").innerHTML = [hero(lab), models(lab), throughDraft(lab), throughGame(lab), winPaths(lab), winConditions(lab), lanePhase(lab),
     calibration(lab), why(lab), swing(lab), sideAndFollow(lab), agreement(lab), identity(lab), months(lab), seasons(lab), intervals(lab), regionsTest(lab), leagues(lab),
     learned(lab), calls(lab), history(lab)].join("");
@@ -815,31 +813,5 @@ async function init() {
   drawAll();
   window.addEventListener("resize", drawAll);
   loadGames();
-  let solo = null;
-  const show = (which) => {
-    document.querySelectorAll(".lab-tabs .mode-tab").forEach((b) => {
-      const on = b.dataset.lab === which;
-      b.classList.toggle("on", on);
-      b.setAttribute("aria-selected", on ? "true" : "false");
-    });
-    $("#labPro").hidden = which !== "pro";
-    $("#labSolo").hidden = which !== "solo";
-    const games = Object.values(solo?.ranks || {}).reduce((n, r) => n + (r.games || 0), 0);
-    $("#labMeta").textContent = which === "pro" ? proMeta
-      : games ? `${games.toLocaleString()} solo queue games this season, every rank tested on games it hadn't seen` : "Solo queue: no games yet";
-    if (which === "pro") drawAll();
-  };
-  $("#lab").querySelector(".lab-tabs").addEventListener("click", (e) => {
-    const b = e.target.closest("button[data-lab]");
-    if (b) show(b.dataset.lab);
-  });
-  if (location.hash === "#solo") show("solo");   // (the board's "How it was tested" link: straight to solo queue)
-  try {
-    solo = await (await fetch("/api/soloq/ranks")).json();
-    $("#labSolo").innerHTML = soloSection(solo);
-  } catch (e) {
-    $("#labSolo").innerHTML = soloSection(null);
-  }
-  if (!$("#labSolo").hidden) show("solo");   // (its line under the header, now that the numbers are in)
 }
 init();
