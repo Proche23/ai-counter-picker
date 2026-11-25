@@ -8,7 +8,6 @@ const num = (x) => (x == null ? "–" : Number(x).toLocaleString());
 const ROLES = ["TOP", "JNG", "MID", "BOT", "SUP"];
 const ROLE_NAME = { TOP: "Top", JNG: "Jungle", MID: "Mid", BOT: "Bot", SUP: "Support" };
 const TIER_RANK = { S: 5, A: 4, B: 3, C: 2, D: 1 };
-const THIN = 30;   // pro games in a role below which solo queue mode on the board also uses solo queue games
 // lane glyphs: the map as a square, the lane drawn in it (own drawings, not Riot's icons)
 const ROLE_ICON = {
   TOP: '<path d="M3 13V3h10" /><rect x="3" y="3" width="4" height="4" class="f"/>',
@@ -53,9 +52,10 @@ const eta = (s) => (s == null ? "" : s < 90 ? "about a minute left" : s < 3600 ?
 const GAMES_OPTS = [[1000, "1,000", "~20 min"], [3000, "3,000", "~1 h"], [10000, "10,000", "~3.5 h"]];
 // every rank, this season: games plus minute-by-minute timelines for part of them (~2,200 games an hour)
 const RANK_GAMES_OPTS = [[8000, "8,000", "~4 h"], [24000, "24,000", "~11 h"], [400000, "As many as possible", "until stopped or the key runs out"]];
-const RANKS = ["iron", "bronze", "silver", "gold", "platinum", "emerald", "diamond", "master"];
-const RANK_LABEL = { iron: "Iron", bronze: "Bronze", silver: "Silver", gold: "Gold", platinum: "Platinum", emerald: "Emerald", diamond: "Diamond", master: "Master+" };
-let RANK = "";   // the table: every rank, or one
+const RANKS = ["iron", "bronze", "silver", "gold", "platinum", "emerald", "diamond", "master-only", "grandmaster", "challenger"];
+const RANK_LABEL = { iron: "Iron", bronze: "Bronze", silver: "Silver", gold: "Gold", platinum: "Platinum", emerald: "Emerald", diamond: "Diamond", "master-only": "Master", grandmaster: "Grandmaster", challenger: "Challenger" };
+let RANK = "silver", rankRequest = 0, rankTimer = null, rankLoading = false, detailRequest = 0;
+let rankLab = {};
 const DAYS_OPTS = [[7, "7 days"], [14, "14 days"], [21, "21 days"], [30, "30 days"]];
 let FORM = { games: 24000, tier: "ranks", days: 21, platform: null, open: false };
 
@@ -125,9 +125,7 @@ function renderDb() {
   if (!has && META.web) {
     box.innerHTML = `<div class="sq-hero"><div class="sq-hero-mark" aria-hidden="true">${roleSvg("MID")}</div><div>
         <h2>Solo queue stats aren't in this copy yet</h2>
-        <p class="lead">This page shows every champion in every role from high-elo ranked solo queue: win, pick and ban rates, each lane matchup,
-        best teammates and common builds, kept apart from the pro games. The games are downloaded with the full version on a PC
-        (<code>py soloq.py --download</code>) and come along the next time this site is rebuilt. The draft board works without them.</p></div></div>`;
+        <p class="lead">This rank has no published match sample. Win rates, builds and teammate combinations appear when ranked game data is available.</p></div></div>`;
     return;
   }
   box.innerHTML = has
@@ -135,8 +133,7 @@ function renderDb() {
     : `<div class="sq-hero"><div class="sq-hero-mark" aria-hidden="true">${roleSvg("MID")}</div><div>
         <h2>Build your solo queue database</h2>
         <p class="lead">A database of its own for ranked solo queue: this season's games at every rank, Iron to Challenger, every champion in every role,
-        each lane matchup, best teammates and common builds, and for part of the games the whole game minute by minute. It never mixes with the pro games.
-        The draft board's <b>Solo queue</b> tab answers from it, from the games of your rank.</p></div></div>${body}`;
+        each lane matchup, best teammates and common builds, and for part of the games the whole game minute by minute.</p></div></div>${body}`;
   wireDb();
 }
 function tierMix(t) {   // "Iron to Challenger", "Master+"...
@@ -201,7 +198,9 @@ function wireDb() {
 async function poll(once) {
   clearTimeout(POLL);
   const before = META.summary.games;
-  const m = await getJSON(`/api/soloq/meta?${qs()}`);
+  const query = qs();
+  const m = await getJSON(`/api/soloq/meta?${query}`);
+  if (query !== qs() || rankLoading) return;
   if (!m.error) {
     const was = META.download?.running;
     META = m;
@@ -215,32 +214,65 @@ async function poll(once) {
 
 // ------------------------------------------------------------------ champions by role
 const qs = () => `patch=${encodeURIComponent($("#patch").value)}${RANK ? `&rank=${RANK}` : ""}`;
-function renderRankFilter() {   // every rank together, or one rank's games only
-  const el = $("#rankFilter");
-  if (!el) return;
-  const per = META.ranks || {};
-  el.hidden = !Object.values(per).some((n) => n > 0);
-  el.innerHTML = `<button type="button" data-rank="" class="${RANK ? "" : "on"}">All ranks</button>` + RANKS.map((r) =>
-    `<button type="button" data-rank="${r}" class="rk-${r}${r === RANK ? " on" : ""}${per[r] ? "" : " empty"}" title="${esc(RANK_LABEL[r])}: ${num(per[r] || 0)} games"><i></i>${esc(RANK_LABEL[r])}</button>`).join("");
+function renderRankScope() {
+  const label = RANK_LABEL[RANK];
+  const slider = $("#rankSlider");
+  slider.value = RANKS.indexOf(RANK);
+  slider.setAttribute("aria-valuetext", label);
+  $("#rankValue").textContent = label;
+  $("#rankScope").textContent = rankLoading ? `Loading ${label} Solo/Duo games…`
+    : META?.summary.games ? `${num(META.summary.games)} Ranked Solo/Duo games sampled through the ${label} ladder.`
+    : `No Ranked Solo/Duo games available in the ${label} sample.`;
+  $("#rankAuto").disabled = !rankTimer && RANKS.filter((r) => META?.ranks?.[r] > 0).length < 2;
+  const comeback = rankLab[RANK]?.throws?.behind3_at15_won;
+  const note = $("#rankComeback");
+  note.hidden = rankLoading || !META?.summary.games || !comeback?.games || comeback.rate == null;
+  note.textContent = note.hidden ? "" : `${label} timeline sample · Teams down 3,000+ gold at 15 min won ${pct(comeback.rate)} of ${num(comeback.games)} games across sampled patches.`;
 }
-document.addEventListener("click", async (e) => {
-  const b = e.target.closest?.("#rankFilter button[data-rank]");
-  if (!b || b.dataset.rank === RANK) return;
-  RANK = b.dataset.rank;
+
+function stopRankCycle() {
+  clearInterval(rankTimer);
+  rankTimer = null;
+  $("#rankAuto").setAttribute("aria-pressed", "false");
+  $("#rankAuto").textContent = "Auto-cycle ranks";
+  renderRankScope();
+}
+
+async function selectRank(rank) {
+  if (!RANKS.includes(rank) || rank === RANK) return;
+  const request = ++rankRequest;
+  RANK = rank;
+  rankLoading = true;
+  ++seq;
+  ++detailRequest;
   OPEN = null;
-  const m = await getJSON(`/api/soloq/meta?${qs()}`);
-  if (!m.error) META = m;
-  renderHead(); fillPatches(); renderTabs(); loadRole();
-});
+  ROWS = [];
+  $("#browse").hidden = true;
+  $("#detail").textContent = "";
+  renderRankScope();
+  const m = await getJSON(`/api/soloq/meta?rank=${rank}`).catch(() => ({ error: "Couldn’t load this rank." }));
+  if (request !== rankRequest) return;
+  rankLoading = false;
+  if (m.error) {
+    $("#rankScope").textContent = m.error;
+    return;
+  }
+  META = m;
+  renderHead(); renderDb(); fillPatches(); renderTabs();
+  if (m.summary.games) loadRole();
+  if (m.download?.running) poll();
+}
 function renderHead() {
   const s = META.summary;
   $("#sqMeta").textContent = s.games ? `${num(s.games)} ranked solo queue games${RANK ? ` · ${RANK_LABEL[RANK]}` : ` · ${tierMix(s.tiers)}`} · ${s.patches.length ? `patch ${s.patches[0].name || s.patches[0].patch}` : ""}${s.newest ? ` · newest ${s.newest}` : ""}`
     : (RANK ? `No ${RANK_LABEL[RANK]} games yet` : "No solo queue games yet");
-  renderRankFilter();
+  renderRankScope();
   $("#browse").hidden = !s.games;
 }
 function fillPatches() {
   const sel = $("#patch"), cur = sel.value;
+  sel.closest("label").hidden = !!META.web;
+  if (META.web) { sel.value = ""; return; }
   sel.innerHTML = `<option value="">All patches</option>` + META.summary.patches.map((p) => `<option value="${esc(p.patch)}">Patch ${esc(p.name || p.patch)} (${num(p.games)})</option>`).join("");
   sel.value = META.summary.patches.some((p) => p.patch === cur) ? cur : "";
 }
@@ -251,25 +283,33 @@ function renderTabs() {
 
 async function loadRole() {
   const my = ++seq;
-  $("#rows").innerHTML = Array.from({ length: 8 }, () => `<tr class="skel"><td colspan="9"><i></i></td></tr>`).join("");
+  ++detailRequest;
+  $("#detail").classList.remove("loading");
+  $("#detail").textContent = "";
+  OPEN = null;
+  $("#rows").innerHTML = Array.from({ length: 8 }, () => `<tr class="skel"><td colspan="8"><i></i></td></tr>`).join("");
   const r = await getJSON(`/api/soloq/role?role=${ROLE}&${qs()}`);
   if (my !== seq) return;
-  if (r.error) { $("#rows").innerHTML = `<tr><td colspan="9" class="err">${esc(r.error)}</td></tr>`; return; }
+  if (r.error) { $("#rows").innerHTML = `<tr><td colspan="8" class="err">${esc(r.error)}</td></tr>`; return; }
   ROWS = r.rows || [];
+  const sampled = new Set(ROWS.map((row) => row.champ));
+  ROWS.push(...Object.keys(META.champ_ids || {}).filter((champ) => !sampled.has(champ))
+    .map((champ) => ({ champ, games: 0, score: -1 })));
   renderRows();
-  const want = SEL && SEL.role === ROLE && ROWS.some((x) => x.champ === SEL.champ) ? SEL.champ : (ROWS[0] || {}).champ;
+  const want = SEL && SEL.role === ROLE && ROWS.some((x) => x.champ === SEL.champ) ? SEL.champ : ROWS.find((x) => x.games)?.champ;
   if (want && (!SEL || SEL.champ !== want || SEL.role !== ROLE || !OPEN)) openChamp(want, ROLE);
   else if (!want) $("#detail").innerHTML = `<p class="muted">No games in this role${$("#patch").value ? " on this patch" : ""} yet.</p>`;
 }
 
 function sorted() {
-  const q = $("#find").value.trim().toLowerCase(), thin = $("#thinOnly").checked;
-  let rows = ROWS.filter((x) => (!q || x.champ.toLowerCase().includes(q)) && (!thin || (x.pro_games ?? 0) < THIN));
+  const q = $("#find").value.trim().toLowerCase();
+  let rows = ROWS.filter((x) => !q || x.champ.toLowerCase().includes(q));
   const k = SORT.k, dir = SORT.dir;
   const val = (x) => (k === "tier" ? (TIER_RANK[x.tier] || 0) * 10 + x.score : k === "champ" ? x.champ : x[k] ?? -1);
   rows = rows.slice().sort((a, b) => {
     const A = val(a), B = val(b);
-    return (typeof A === "string" ? A.localeCompare(B) : A - B) * dir || b.games - a.games;
+    return Number(b.games > 0) - Number(a.games > 0)
+      || (typeof A === "string" ? A.localeCompare(B) : A - B) * dir || b.games - a.games || a.champ.localeCompare(b.champ);
   });
   return rows;
 }
@@ -289,17 +329,16 @@ function renderRows() {
     th.setAttribute("aria-sort", th.dataset.k === SORT.k ? (SORT.dir > 0 ? "ascending" : "descending") : "none");
   });
   $("#rows").innerHTML = rows.map((x, i) => {
-    const thin = (x.pro_games ?? 0) < THIN;
     return `<tr data-c="${esc(x.champ)}" class="${SEL && SEL.champ === x.champ && SEL.role === ROLE ? "sel" : ""}" tabindex="0">
-      <td class="n">${i + 1}</td>
+      <td class="n">${x.games ? i + 1 : "–"}</td>
       <td class="l"><span class="cn">${img(champImg(x.champ), x.champ, "ci")}<span>${esc(x.champ)}</span></span></td>
+      ${!x.games ? '<td colspan="6" class="muted">No games in this sample</td>' : `
       <td>${x.tier ? `<span class="tier t-${x.tier}">${x.tier}</span>` : `<span class="tier t-none" title="Too few games to rate">–</span>`}</td>
       <td class="wr">${wrCell(x)}</td>
-      <td>${pct(x.pick)}</td><td>${pct(x.ban)}</td><td>${num(x.games)}</td><td>${x.kda.toFixed(1)}</td>
-      <td><span class="prog ${thin ? "thin" : ""}" title="${thin ? `Only ${x.pro_games ?? 0} pro games as ${ROLE_NAME[ROLE]}: solo queue mode on the board rates it with these solo queue games too` : `${num(x.pro_games)} pro games as ${ROLE_NAME[ROLE]} (${esc(x.pro_record || "")}): the board judges it on pro games`}">${num(x.pro_games ?? 0)}</span></td></tr>`;
-  }).join("") || `<tr><td colspan="9" class="muted empty">No champion matches.</td></tr>`;
-  const thinN = ROWS.filter((x) => (x.pro_games ?? 0) < THIN).length;
-  $("#listFoot").innerHTML = `${num(ROWS.length)} champions played as ${ROLE_NAME[ROLE]} · <span class="prog thin">${thinN}</span> with under ${THIN} pro games in this role (solo queue mode rates them with these games too).`;
+      <td>${pct(x.pick)}</td><td>${pct(x.ban)}</td><td>${num(x.games)}</td><td>${x.kda.toFixed(1)}</td>`}
+      </tr>`;
+  }).join("") || `<tr><td colspan="8" class="muted empty">No champion matches.</td></tr>`;
+  $("#listFoot").textContent = `${num(ROWS.filter((x) => x.games).length)} champions sampled as ${ROLE_NAME[ROLE]} in ${RANK_LABEL[RANK]}.`;
 }
 
 // ------------------------------------------------------------------ one champion
@@ -330,6 +369,7 @@ function buildHTML(b) {
 }
 
 async function openChamp(champ, role) {
+  const request = ++detailRequest;
   SEL = { champ, role };
   OPEN = null;
   document.querySelectorAll("#rows tr").forEach((tr) => tr.classList.toggle("sel", tr.dataset.c === champ));
@@ -337,19 +377,14 @@ async function openChamp(champ, role) {
   const box = $("#detail");
   box.classList.add("loading");
   const d = await getJSON(`/api/soloq/champ?name=${encodeURIComponent(champ)}&role=${role}&${qs()}`);
+  if (request !== detailRequest) return;
   box.classList.remove("loading");
-  if (!SEL || SEL.champ !== champ) return;
   OPEN = d;
   if (d.error || !d.games) {
     box.innerHTML = `<p class="muted">${esc(d.error || `No ${ROLE_NAME[role]} games for ${champ} here yet.`)}</p>`;
     return;
   }
   const base = d.score;
-  const pro = d.pro || {};
-  const thin = (pro.games || 0) < THIN;
-  const proLine = thin
-    ? `Only <b>${num(pro.games || 0)}</b> pro game${pro.games === 1 ? "" : "s"} as ${ROLE_NAME[role]}${pro.record ? ` (${esc(pro.record)})` : ""}: in solo queue mode the draft board rates ${esc(champ)} with these solo queue games too.`
-    : `<b>${num(pro.games)}</b> pro games as ${ROLE_NAME[role]} (${esc(pro.record)}) · ${pct(pro.presence, 0)} pro presence: the draft board judges ${esc(champ)} on pro games alone.`;
   const roles = (d.roles || []).map((r) => `<button type="button" class="rchip ${r.role === role ? "on" : ""}" data-r="${r.role}" title="${num(r.games)} games as ${ROLE_NAME[r.role]}">${roleSvg(r.role)}${ROLE_NAME[r.role]} <small>${pct(r.share, 0)}</small></button>`).join("");
   const all = d.lanes.slice().sort((a, b) => b.games - a.games);
   box.innerHTML = `
@@ -364,7 +399,6 @@ async function openChamp(champ, role) {
       <div><span>KDA</span><b>${d.kda.toFixed(2)}</b><small>${d.k.toFixed(1)} / ${d.d.toFixed(1)} / ${d.a.toFixed(1)}</small></div>
     </div>
     <div class="dstats"><span>CS / min <b>${d.cspm.toFixed(1)}</b></span><span>Gold / min <b>${Math.round(d.gpm)}</b></span><span>Damage / min <b>${Math.round(d.dpm)}</b></span><span>Vision / min <b>${d.vspm.toFixed(2)}</b></span></div>
-    <p class="proline ${thin ? "thin" : ""}">${proLine}</p>
     <h3>Lane matchups <small class="muted">vs the enemy ${ROLE_NAME[role]}, 8+ games</small></h3>
     <div class="two"><div><h4>Strong against</h4>${list(d.best.filter((x) => x.score > base), role, base, "No clear good matchup yet.")}</div>
       <div><h4>Struggles against</h4>${list(d.worst.filter((x) => x.score < base), role, base, "No clear bad matchup yet.")}</div></div>
@@ -390,7 +424,7 @@ async function openChamp(champ, role) {
 
 // ------------------------------------------------------------------ start
 async function init() {
-  META = await getJSON("/api/soloq/meta");
+  META = await getJSON(`/api/soloq/meta?rank=${RANK}`);
   if (META.error) { $("#dbCard").innerHTML = `<p class="err">${esc(META.error)}</p>`; return; }
   FORM.platform = META.platform;
   const h = decodeURIComponent(location.hash.slice(1));
@@ -400,6 +434,7 @@ async function init() {
   if (h === "download") FORM.open = true;   // (the draft board's "Download solo queue games" button)
   renderHead();
   renderDb();
+  getJSON("/api/soloq/ranks").then((data) => { rankLab = data.lab?.ranks || {}; renderRankScope(); }).catch(() => {});
   if (h === "download") $("#dbCard").scrollIntoView({ block: "start" });
   fillPatches();
   renderTabs();
@@ -415,7 +450,22 @@ async function init() {
   $("#patch").addEventListener("change", () => { OPEN = null; loadRole(); });
   $("#find").addEventListener("input", renderRows);
   $("#find").addEventListener("keydown", (e) => { if (e.key === "Enter") { const first = $("#rows tr[data-c]"); if (first) openChamp(first.dataset.c, ROLE); } });
-  $("#thinOnly").addEventListener("change", renderRows);
+  $("#rankSlider").addEventListener("input", (e) => {
+    const rank = RANKS[Number(e.target.value)];
+    stopRankCycle();
+    selectRank(rank);
+  });
+  $("#rankAuto").addEventListener("click", () => {
+    if (rankTimer) return stopRankCycle();
+    $("#rankAuto").setAttribute("aria-pressed", "true");
+    $("#rankAuto").textContent = "Pause rank cycling";
+    rankTimer = setInterval(() => {
+      if (document.hidden || rankLoading) return;
+      const available = RANKS.filter((r) => META.ranks?.[r] > 0);
+      if (available.length < 2) return stopRankCycle();
+      selectRank(available[(available.indexOf(RANK) + 1) % available.length]);
+    }, 12000);
+  });
   document.querySelectorAll("#table th[data-k]").forEach((th) => th.addEventListener("click", () => {
     const k = th.dataset.k;
     SORT = SORT.k === k ? { k, dir: -SORT.dir } : { k, dir: k === "champ" ? 1 : -1 };

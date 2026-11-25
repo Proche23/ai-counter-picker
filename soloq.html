@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
 <meta charset="utf-8">
-<script src="web-shim.js?v=c5007b0620"></script>
+<script src="web-shim.js?v=c232212696"></script>
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <meta name="theme-color" content="#010a13">
 <title>Solo Queue</title>
@@ -10,8 +10,8 @@
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=Cinzel:wght@600;700;800&family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
-<link rel="stylesheet" href="style.css?v=c5007b0620">
-<script src="theme.js?v=c5007b0620"></script>
+<link rel="stylesheet" href="style.css?v=c232212696">
+<script src="theme.js?v=c232212696"></script>
 </head>
 <body class="sq-page">
 <header class="top">
@@ -22,6 +22,16 @@
 </header>
 
 <main class="sq">
+  <section class="card sq-rank-panel" aria-labelledby="sqTitle">
+    <h1 id="sqTitle">Solo Queue</h1>
+    <div class="sq-rank-controls">
+      <label for="rankSlider">Rank <output id="rankValue" for="rankSlider">Silver</output></label>
+      <input type="range" id="rankSlider" min="0" max="9" value="2">
+      <button type="button" id="rankAuto" aria-pressed="false" disabled>Auto-cycle ranks</button>
+    </div>
+    <p id="rankScope" aria-live="polite"></p>
+    <p id="rankComeback" class="muted" hidden></p>
+  </section>
   <section class="card sq-db" id="dbCard" aria-live="polite"></section>
 
   <section class="card sq-browse" id="browse" hidden>
@@ -29,9 +39,7 @@
       <div class="seg big sq-roles" id="roleTabs" role="tablist" aria-label="Role"></div>
       <div class="sq-tools">
         <label class="sq-find"><span class="sr">Find a champion</span><input id="find" type="search" placeholder="Find a champion" autocomplete="off" spellcheck="false"></label>
-        <div class="seg mid sq-rankf" id="rankFilter" role="group" aria-label="Rank" hidden></div>
         <label class="sq-sel">Patch <select id="patch"><option value="">All patches</option></select></label>
-        <label class="chk" title="Only champions with fewer than 30 pro games in this role: the ones solo queue mode on the draft board rates with solo queue games too"><input type="checkbox" id="thinOnly"> Few pro games</label>
       </div>
     </div>
     <div class="sq-split">
@@ -47,7 +55,6 @@
               <th data-k="ban" title="Share of games it was banned in">Ban</th>
               <th data-k="games">Games</th>
               <th data-k="kda" title="(kills + assists) / deaths">KDA</th>
-              <th data-k="pro_games" title="Pro games in this role (LCK, LPL, internationals and other regions' top leagues)">Pro</th>
             </tr></thead>
             <tbody id="rows"></tbody>
           </table>
@@ -59,7 +66,7 @@
   </section>
 </main>
 <footer><span>Solo queue games from Riot's API kept apart from the pro games: the pro statistics never read them. Champion, item and rune pictures: Riot Data Dragon. Not endorsed by Riot Games.</span><span class="legal">AI Counter Picker isn't endorsed by Riot Games and doesn't reflect the views or opinions of Riot Games or anyone officially involved in producing or managing Riot Games properties. Riot Games, and all associated properties are trademarks or registered trademarks of Riot Games, Inc. Pro match data from Leaguepedia (CC BY-SA 3.0).</span></footer>
-<script src="fx.js?v=c5007b0620"></script>
-<script src="soloq.js?v=c5007b0620"></script>
+<script src="fx.js?v=c232212696"></script>
+<script src="soloq.js?v=c232212696"></script>
 </body>
 </html>

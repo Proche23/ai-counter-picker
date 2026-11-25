@@ -2270,3 +2270,10 @@ body.casual-lobby .board, body.casual-lobby #analysis { display:none; } #casualL
 .arena-build li img { vertical-align: middle; margin-right: 6px; }
 .arena-build p + p { margin-top: 6px; }
 .arena-pick img, .arena-build img { object-fit: cover; border: 1px solid var(--edge-hi); }
+.sq-rank-panel { margin-bottom: 14px; }
+.sq-rank-panel h1 { margin: 0 0 12px; color: var(--gold-hi); font: 700 24px/1.2 Cinzel, Georgia, serif; }
+.sq-rank-controls { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 16px; }
+.sq-rank-controls output { color: var(--gold-hi); margin-left: 6px; font-weight: 700; }
+.sq-rank-controls input { flex: 1 1 180px; min-width: 0; max-width: 420px; accent-color: var(--energy); }
+.sq-rank-panel p { margin: 10px 0 0; }
+.sq-tools .sq-sel[hidden] { display: none; }
