@@ -74,6 +74,7 @@ function freshState(keep) {
     loaded: keep?.loaded || false,   // loading screen / game started: skip bans, just type the 10 champions
     follow: keep?.follow ?? true,    // fill the board in from your League client by itself
     clientKey: "",                   // which champ select (or game) this board was filled from
+    roleSwap: null,
     mode: keep?.mode === "stats" ? "stats" : "pro",   // the tab at the top: the draft board, or My Stats
     rank: RANKS.includes(keep?.rank) ? keep.rank : "silver",
     proSolo: keep?.proSolo ?? false,   // (the "Solo queue" switch as it was on the pro tab)
@@ -446,7 +447,16 @@ function bindEvents() {
     } else S.banStage = false;
     refresh();
   };
-  $("#myRole").onchange = (e) => { S.myRole = e.target.value; refresh(); };
+  $("#myRole").onchange = (e) => {
+    S.myRole = e.target.value;
+    if (following()) {
+      const reported = CL.cs.me.role;
+      S.roleSwap = reported === S.myRole ? null : { from: reported, to: S.myRole };
+      $("#rolePicks").hidden = true;
+      return followDraft(CL.cs, true);
+    }
+    refresh();
+  };
   $("#mySlot").onchange = (e) => { S.slot = e.target.value; refresh(); };
   $("#poolOn").onchange = (e) => { S.poolOn = e.target.checked; pushPrefs(); refresh(); };
   $("#phoneBtn").onclick = openPhone;
@@ -733,6 +743,7 @@ async function refresh(afterLock = false) {
     if (soloMode()) Object.assign(body, { mode: "solo", rank: S.rank, asOf: null });   // one rank's solo queue games
     const r = await fetch("/api/analyze", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) });
     const data = await r.json();
+    if (body.solo && body.role !== S.myRole) { pending = true; return; }
     if (!r.ok && soloMode() && /solo queue games (yet|on this website)/.test(data.error || "")) {   // no games for this rank: say how to get them
       SOLO.error = data.error;
       renderSoloEmpty();
@@ -1107,6 +1118,21 @@ function renderWinbar() {
 
 function renderRecs() {
   const box = $("#recs"), title = $("#recsTitle");
+  const personal = RES.role_picks;
+  const showRole = S.solo && !S.loaded && RES.next?.action === "pick" &&
+    personal?.role === S.myRole && personal.picks.length > 0;
+  $("#rolePicks").hidden = !showRole;
+  if (showRole) {
+    $("#rolePicksTitle").textContent = `Top ${personal.picks.length} picks for ${ROLE_NAME[S.myRole]}`;
+    $("#rolePicksList").innerHTML = personal.picks.map((r, i) =>
+      `<button type="button" class="rec" data-name="${esc(r.champ)}" title="View champion profile">
+        ${img(champImg(r.champ), "")}<span><span class="rname">${i + 1}. ${esc(r.champ)}</span>
+        <span class="rscore">${r.rating.toFixed(1)} rating</span></span></button>`).join("");
+    $("#rolePicksList").onclick = (event) => {
+      const button = event.target.closest("[data-name]");
+      if (button) openProfile(button.dataset.name, S.myRole);
+    };
+  }
   $("#poolNote").innerHTML = S.loaded ? "" : soloNote();
   if (!RES.next || S.loaded) { title.textContent = ""; box.innerHTML = ""; return; }   // loading screen: no turn-by-turn advice
   const side = SIDE[RES.next.side];
@@ -1723,14 +1749,18 @@ function clearTurn() {
 }
 
 function draftFromClient(cs) {   // the board as the client has it: bans, locked picks (with their slots), your role
+  // Keep an informal swap until League reports a new assignment or this draft ends.
+  if (S.roleSwap && cs.me.role && cs.me.role !== S.roleSwap.from) S.roleSwap = null;
+  const myRole = S.roleSwap?.to || cs.me.role || S.myRole || "MID";
   const seen = new Set();
   const bans = (side) => cs.bans[side].filter((c) => BY_NAME[c] && !seen.has(c) && seen.add(c)).slice(0, 5);
   const blueBans = bans("B"), redBans = bans("R");
   const picks = (side) => cs.picks[side].filter((p) => p.champ && BY_NAME[p.champ] && !seen.has(p.champ) && seen.add(p.champ))
-    .map((p) => (p.me ? { champ: p.champ, role: p.role || S.myRole || null, slot: p.slot, me: true }
-      : { champ: p.champ, role: p.role || null, slot: p.slot }));
+    .map((p) => (p.me ? { champ: p.champ, role: myRole, slot: p.slot, me: true }
+      : { champ: p.champ, role: side === cs.side && S.roleSwap && p.role === myRole
+          ? S.roleSwap.from : p.role || null, slot: p.slot }));
   return {
-    us: cs.side, myRole: cs.me.role || S.myRole || "MID", slot: cs.me.slot ? String(cs.me.slot) : "",
+    us: cs.side, myRole, slot: cs.me.slot ? String(cs.me.slot) : "",
     blueBans, redBans, blue: picks("B"), red: picks("R"),
     banStage: cs.stage === "planning" || cs.stage === "bans",
   };
